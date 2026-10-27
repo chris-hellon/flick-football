@@ -21,6 +21,12 @@ export const E = 0.8;
 export const MAXV = 1500;
 export const MINV = 90;
 export const MAXDRAG = 150;
+/**
+ * On-screen pull (CSS pixels) for full power, whatever size the pitch is drawn: a phone draws it
+ * small, so pulls are measured on screen rather than on the pitch. A finger gets a longer pull
+ * than a mouse (bigger movements, smaller pixels): both are about 2–2.5 cm.
+ */
+export const FULL_PULL_PX = { mouse: 100, touch: 150 } as const;
 /** Drags shorter than this cancel the flick. */
 export const MIN_DRAG = 12;
 

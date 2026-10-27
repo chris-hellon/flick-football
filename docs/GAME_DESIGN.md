@@ -35,7 +35,11 @@ disagree, the prototype wins; fix this file.
 - **Flick input:** press on your player, drag back, release. The pull is measured from where the
   press started (the prototype measured from the player's centre, so pressing near a player's edge
   added up to 36 units of pull and a tiny drag gave a hard flick, worst at kick-off where the ball
-  is touching the taker). Pull distance is capped at
+  is touching the taker). The pull is measured on screen, not on the pitch: full power is a
+  `FULL_PULL_PX` pull of 100 CSS px with a mouse or 150 with a finger, however big the pitch is
+  drawn (the prototype measured pitch units, so on a phone, where the pitch is drawn at about 0.44
+  px a unit, about 66 px — a centimetre of thumb — was already full power). That on-screen pull is
+  converted to pull units, which the rest of this paragraph uses. Pull distance is capped at
   `MAXDRAG = 150`; power `pw = min(d,150)/150`; launch speed `v = 90 + pw^1.5 · (1500 - 90)`
   (`POWER_CURVE`; the prototype was linear, which made light touches too strong: a 30-unit pull
   went from 372 to 216, half a pull from 795 to 588, a full pull is still 1500), direction

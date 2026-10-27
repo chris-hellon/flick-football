@@ -1,4 +1,4 @@
-import { launchSpeed, MIN_DRAG } from "../engine/constants";
+import { FULL_PULL_PX, launchSpeed, MAXDRAG, MIN_DRAG } from "../engine/constants";
 import type { TeamBody } from "../engine/body";
 import type { AimDto } from "../net/protocol";
 import { pull, type Drag, type Renderer, type ViewState } from "../render/renderer";
@@ -49,7 +49,10 @@ export class Input {
         return;
       }
       if (!p) return controls.tappedLocked(w.x, w.y);
-      this.drag = { p, sx: w.x, sy: w.y, x: w.x, y: w.y, block: controls.phase() === "block" };
+      // Full power takes the same on-screen pull however big the pitch is drawn.
+      const fullPx = e.pointerType === "mouse" ? FULL_PULL_PX.mouse : FULL_PULL_PX.touch;
+      const k = (renderer.scale * MAXDRAG) / fullPx;
+      this.drag = { p, sx: w.x, sy: w.y, x: w.x, y: w.y, k, block: controls.phase() === "block" };
       cv.setPointerCapture(e.pointerId);
       e.preventDefault();
     });

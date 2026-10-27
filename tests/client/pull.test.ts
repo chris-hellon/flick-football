@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { TeamBody } from "../../src/client/src/engine/body";
 import {
+  FULL_PULL_PX,
   launchSpeed,
   MAXDRAG,
   MAXV,
@@ -13,9 +14,9 @@ describe("flick pull", () => {
 
   it("measures from where the press started, not the player's centre", () => {
     // Pressed 30 units off centre, then pulled back 5: a 5-unit pull, below the minimum.
-    expect(pull({ p, sx: 130, sy: 100, x: 130, y: 105, block: false })).toEqual(
-      { dx: 0, dy: -5, d: 5 },
-    );
+    expect(
+      pull({ p, sx: 130, sy: 100, x: 130, y: 105, k: 1, block: false }),
+    ).toEqual({ dx: 0, dy: -5, d: 5 });
   });
 
   it("points the flick opposite the pull", () => {
@@ -25,11 +26,35 @@ describe("flick pull", () => {
       sy: 110,
       x: 90,
       y: 150,
+      k: 1,
       block: false,
     });
     expect(d).toBe(40);
     expect(dx).toBe(0);
     expect(dy).toBeLessThan(0);
+  });
+
+  it("takes the same on-screen pull for full power on a small pitch as on a big one", () => {
+    // k as the input sets it: CSS px per world unit × MAXDRAG / full-power pixels.
+    const k = (pxPerUnit: number, fullPx: number) =>
+      (pxPerUnit * MAXDRAG) / fullPx;
+    for (const [pxPerUnit, fullPx] of [
+      [0.44, FULL_PULL_PX.touch], // a phone
+      [0.62, FULL_PULL_PX.mouse], // a desktop window
+      [0.77, FULL_PULL_PX.mouse], // a big screen
+    ] as const) {
+      const worldPull = fullPx / pxPerUnit; // the world distance under fullPx on screen
+      const { d } = pull({
+        p,
+        sx: 100,
+        sy: 100,
+        x: 100,
+        y: 100 + worldPull,
+        k: k(pxPerUnit, fullPx),
+        block: false,
+      });
+      expect(d).toBeCloseTo(MAXDRAG);
+    }
   });
 
   it("softens short and medium pulls but keeps a full pull at full power", () => {

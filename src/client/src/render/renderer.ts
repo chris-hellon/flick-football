@@ -11,6 +11,8 @@ export interface Drag {
   /** Where the press started, in world units. */
   sx: number;
   sy: number;
+  /** Pull units (MAXDRAG is full power) per world unit of drag, fixed when the press starts. */
+  k: number;
   /** Pointer position in world units. */
   x: number;
   y: number;
@@ -18,12 +20,12 @@ export interface Drag {
 }
 
 /**
- * The pull of a drag: from where the press started back to the pointer, so a tiny pull is a
- * tiny flick wherever on the player you pressed. The flick goes the opposite way.
+ * The pull of a drag, in pull units: from where the press started back to the pointer, so a tiny
+ * pull is a tiny flick wherever on the player you pressed. The flick goes the opposite way.
  */
 export function pull(drag: Drag): { dx: number; dy: number; d: number } {
-  const dx = drag.sx - drag.x;
-  const dy = drag.sy - drag.y;
+  const dx = (drag.sx - drag.x) * drag.k;
+  const dy = (drag.sy - drag.y) * drag.k;
   return { dx, dy, d: Math.hypot(dx, dy) };
 }
 
@@ -85,6 +87,11 @@ export class Renderer {
     if (this.flip)
       c.setTransform(-s * d, 0, 0, -s * d, (ox + (VX0 + VW) * s) * d, (oy + (VY0 + VH) * s) * d);
     else c.setTransform(s * d, 0, 0, s * d, (ox - VX0 * s) * d, (oy - VY0 * s) * d);
+  }
+
+  /** CSS pixels per world unit at the current size. */
+  get scale(): number {
+    return this.view.s;
   }
 
   toWorld(clientX: number, clientY: number): { x: number; y: number } {
