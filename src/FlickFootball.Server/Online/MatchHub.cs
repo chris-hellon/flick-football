@@ -47,6 +47,16 @@ public sealed class MatchHub(RoomRegistry rooms, MessageRateLimiter limiter, IOp
         return result;
     }
 
+    /// <summary>Pairs this player with anyone waiting, or opens a public match. Returns the seat taken.</summary>
+    public async Task<JoinResult> FindMatch(ClubDto? club, string? form)
+    {
+        if (!Allowed(_o.OtherMessagesPerSecond))
+            return new JoinResult(false, "Slow down a moment.", null, null, null, null, null, false, null);
+        var (result, notices) = rooms.FindMatch(Context.ConnectionId, ClientIp(), club, form);
+        await Send(notices);
+        return result;
+    }
+
     public async Task UpdateClub(ClubDto? club, string? form)
     {
         if (Allowed(_o.OtherMessagesPerSecond)) await Send(rooms.UpdateClub(Context.ConnectionId, club, form));
@@ -66,6 +76,11 @@ public sealed class MatchHub(RoomRegistry rooms, MessageRateLimiter limiter, IOp
         var (ok, notices) = rooms.Flick(Context.ConnectionId, flick);
         await Send(notices);
         return ok;
+    }
+
+    public async Task SendPlace(PlaceDto? place)
+    {
+        if (Allowed(_o.OtherMessagesPerSecond)) await Send(rooms.Place(Context.ConnectionId, place));
     }
 
     public async Task SendAim(AimDto? aim)

@@ -1,6 +1,6 @@
 import type { TeamBody } from "../engine/body";
 import { CX, H, launchSpeed, MAXDRAG, VH, VW, VX0, VY0, W } from "../engine/constants";
-import type { Match } from "../rules/match";
+import { type Match, PLACE_R } from "../rules/match";
 import { clamp } from "../util/math";
 import { COL, DISPLAY } from "./colours";
 import { drawAim, drawBall, drawFigure } from "./figures";
@@ -17,6 +17,10 @@ export interface Drag {
 export interface ViewState {
   drag: Drag | null;
   hover: TeamBody | null;
+  /** Dragging the restart taker into place right now. */
+  placing?: boolean;
+  /** Show the ring the restart taker can be moved within. */
+  placeRing?: boolean;
   /** Another player's aim to show faded (online, from Phase 2). */
   remoteAim?: { p: TeamBody; vx: number; vy: number; block: boolean } | null;
 }
@@ -103,7 +107,9 @@ export class Renderer {
       (phase === "aim" || phase === "think" || phase === "block" || phase === "blockthink")
     ) {
       const a = m.actor();
-      for (const p of world.players) {
+      // While a keeper has the ball, only that keeper is ringed.
+      const flickers = m.keeperBall === a && phase !== "block" ? [world.keepers[a]] : world.players;
+      for (const p of flickers) {
         if (p.team !== a) continue;
         c.save();
         if (a === m.turn && p.id === m.locked) {
@@ -120,6 +126,21 @@ export class Renderer {
         c.stroke();
         c.restore();
       }
+    }
+
+    // Where the throw-in or corner taker can be moved to.
+    if (vs.placeRing) {
+      const b = world.ball;
+      c.save();
+      c.fillStyle = vs.placing ? "rgba(243,177,58,.12)" : "rgba(246,243,232,.06)";
+      c.strokeStyle = vs.placing ? COL.amber : `rgba(246,243,232,${0.4 + pulse * 0.25})`;
+      c.lineWidth = 2;
+      c.setLineDash([6, 6]);
+      c.beginPath();
+      c.arc(b.x, b.y, PLACE_R, 0, Math.PI * 2);
+      c.fill();
+      c.stroke();
+      c.restore();
     }
 
     for (const k of world.keepers) drawFigure(c, k, m.kits[k.team], true, m.up(k.team));

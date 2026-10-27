@@ -62,7 +62,7 @@ describe("possession", () => {
     const { m } = harness({ block: true });
     const p = playerOf(m, 0, 4);
     clearAround(m, [p], CX, H / 2);
-    flickAt(m, p, CX, H / 2 - 200, 450);
+    flickAt(m, p, CX, H / 2 - 200, 330); // gently: a ball left in the goal area goes to the keeper
     settle(m);
     expect(m.phase).toBe("block");
     expect(m.actor()).toBe(1);

@@ -28,6 +28,13 @@ export interface FlickDto {
   b: 0 | 1;
 }
 
+/** A guest moving its restart taker (world units). */
+export interface PlaceDto {
+  id: number;
+  x: number;
+  y: number;
+}
+
 export interface AimDto {
   id: number;
   vx: number;
@@ -45,6 +52,10 @@ export interface StateDto {
   ph: Phase;
   tn: Team;
   lk: number | null;
+  /** The restart taker that can still be moved (throw-ins and corners). */
+  pt: number | null;
+  /** The side whose keeper has the ball (goal kick or gathered). */
+  kb: Team | null;
   sc: [number, number];
   hf: Half;
   cl: number;
@@ -100,14 +111,22 @@ const obj = (v: unknown): v is Record<string, unknown> =>
   !!v && typeof v === "object" && !Array.isArray(v);
 
 export function cleanAim(a: unknown): AimDto | null {
-  if (!obj(a) || !int(a.id, 0, 19) || !num(a.vx) || !num(a.vy)) return null;
+  if (!obj(a) || !int(a.id, 0, 21) || !num(a.vx) || !num(a.vy)) return null;
   return { id: a.id, vx: a.vx, vy: a.vy, b: a.b === 1 ? 1 : 0 };
 }
 
-/** A guest's flick as the host receives it: one of the guest's players, finite numbers. */
+/** A guest's taker move as the host receives it: one of the guest's players, finite numbers. */
+export function cleanPlace(p: unknown): PlaceDto | null {
+  if (!obj(p) || !int(p.id, 10, 19) || !num(p.x) || !num(p.y)) return null;
+  return { id: p.id, x: p.x, y: p.y };
+}
+
+/** A guest's flick as the host receives it: one of the guest's players or its keeper (21). */
 export function cleanFlick(f: unknown): FlickDto | null {
-  if (!obj(f) || !num(f.n) || !int(f.id, 10, 19) || !num(f.vx) || !num(f.vy)) return null;
-  return { n: f.n, id: f.id, vx: f.vx, vy: f.vy, b: f.b === 1 ? 1 : 0 };
+  if (!obj(f) || !num(f.n) || !num(f.vx) || !num(f.vy)) return null;
+  const id = f.id;
+  if (!int(id, 10, 19) && id !== 21) return null;
+  return { n: f.n, id: id as number, vx: f.vx, vy: f.vy, b: f.b === 1 ? 1 : 0 };
 }
 
 export const cleanForm = (v: unknown): FormationName => (isFormation(v) ? v : "4-4-2");
@@ -117,6 +136,8 @@ export interface GuestState {
   ph: Phase;
   tn: Team;
   lk: number | null;
+  pt: number | null;
+  kb: Team | null;
   sc: [number, number];
   hf: Half;
   cl: number;
@@ -152,6 +173,8 @@ export function cleanState(raw: unknown): GuestState | null {
     ph: PHASES.includes(s.ph as Phase) ? (s.ph as Phase) : "pause",
     tn: s.tn === 1 ? 1 : 0,
     lk: int(s.lk, 0, 19) ? s.lk : null,
+    pt: int(s.pt, 0, 19) ? s.pt : null,
+    kb: s.kb === 0 || s.kb === 1 ? s.kb : null,
     sc: [int(sc[0], 0, 999) ? sc[0] : 0, int(sc[1], 0, 999) ? sc[1] : 0],
     hf: s.hf === "gg" ? "gg" : s.hf === 2 ? 2 : 1,
     cl: num(s.cl) ? clamp(s.cl, 0, 600) : 0,
@@ -226,6 +249,8 @@ export function buildState(m: Match, am: AimDto | null, fx: FxEntry[]): StateDto
     ph: m.phase,
     tn: m.turn,
     lk: m.locked,
+    pt: m.placing?.id ?? null,
+    kb: m.keeperBall,
     sc: [m.score[0], m.score[1]],
     hf: m.half,
     cl: Math.ceil(m.clockLeft),

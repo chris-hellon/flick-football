@@ -59,13 +59,28 @@ disagree, the prototype wins; fix this file.
 ## Restarts
 
 - **Out over the goal line, outside the goal mouth:** corner to the attackers if the defending side
-  touched it last, otherwise goal kick. Corner ball 11 units in from both lines at the nearest corner (`RB + 3`);
-  goal kick ball at (CX, 75) or (CX, H - 75).
+  touched it last, otherwise goal kick. Corner ball 11 units in from both lines at the nearest corner (`RB + 3`).
+- **Goal kicks are the keeper's kick** (changed after playtesting; the prototype put the ball at
+  (CX, 75) for an outfield player). The keeper is centred and the ball placed at its feet, on the
+  pitch side (`KR + RB + 2` from it). Only that keeper can be flicked: drag back from the keeper
+  and let go. Keepers stay on their rods, so the kick launches the ball directly at
+  `KEEPER_KICK` (0.8) × the slingshot speed. It counts as a touch, so the kicking side keeps the
+  ball. Outside the keeper's kick, keepers can't be flicked. The computer kicks to the most
+  advanced, least-marked team-mate it can reach (`planKeeperKick`, `ballSpeedFor`).
+- **The keeper gathers** a ball that comes to rest inside a goal area (the small box: 183 × 55,
+  `GOAL_AREA_HW`, `GOAL_AREA_D`) after a flick that moved it, whoever played it there: "… keeper
+  gathers the ball", then that side's keeper's kick. A ball that was already sitting there and
+  wasn't moved isn't gathered. Fouls are judged first.
 - **Over the touchline:** throw-in to the side that didn't touch it last, ball placed just inside.
 - **Disallowed goal** (shot from outside the area): goal kick to the defenders, with a message.
 - The **nearest outfield player** of the restarting side is moved behind the ball (offset
   RP + RB + 4 from the ball, away from the pitch centre; for goal kicks, towards their own goal),
   and other players overlapping that spot are pushed clear.
+- **Moving the taker (throw-ins and corners, human side only):** until the restart is taken, the
+  taker can be dragged anywhere within `PLACE_R` = 70 of the ball (a dashed ring shows it): no
+  closer than touching the ball, no further off the pitch than `RUN_OFF`, never onto another
+  figure. Press near the ball (not on a player) and drag; pressing the taker itself is still the
+  slingshot. Added after playtesting: the automatic spot often left no useful angle.
 - **Kick-off:** formations reset; the most advanced player of the kicking side stands just behind
   the ball on the halfway line. After a goal the conceding side kicks off.
 
@@ -215,21 +230,50 @@ corners, fouls.
 - Lose and the rest of the bracket is simulated to a champion. State is saved locally.
 - Cup ties always use timed halves (the friendly format if timed, else 2 × 3 minutes).
 
+## Results
+
+- Every finished match the player took part in is kept **on this device** (`ff_results`, newest
+  first, at most 200): friendlies vs the computer (with difficulty), two players on one device,
+  Cup ties (with round), and online matches (as host or guest; spectators keep nothing). An online
+  match the friend left and the computer finished is marked as such. Results are always from the
+  player's side: "me" is their own club, whichever end they played.
+- The Results tab shows the last five as W/D/L chips, the record by kind of match (P W D L GD,
+  plus a total when there's more than one kind), Cups won, the recent matches (10, then "Show
+  all"), and head to head against every club faced (grouped by name, most played first).
+- No public leaderboard: without accounts, names aren't unique and the host reports the score, so
+  a shared table could be faked or abused. Stored results are validated on load like settings.
+- A guest who rejoins a match that already finished doesn't save it a second time.
+
 ## UI decisions from playtesting (keep them)
 
 - Page opens on a **pre-match card on the pitch** ("Your club v Opponents", format, difficulty,
   formations, Kick off). Nothing runs until Kick off. Settings changes update the card.
-- Side panel order: big Kick off / Restart button, Your club, Play a friend online, Friendly setup
-  (opponents with Randomise and an optional custom opposition builder, controlled by
-  computer/a friend, difficulty, shapes, length, block flicks, sound), The Cup, How to play.
-- During a match the top button reads "Restart match"; after a settings change it reads "Kick off
-  with these settings" and pulses.
+- Side panel: the big primary button, then one menu with tabs **Play · Club · Cup · Results ·
+  Rules** (the last tab used is remembered).
+  - **Play** starts with **Play against: Computer · Same device · Online**. Computer and Same device
+    show the opponents (with Randomise and the optional custom opposition builder); Computer adds
+    difficulty. Online shows the join-by-code row, then the match code, copy/share, status and
+    leave once a match exists. Below that, **Match settings**: shapes (no "their shape" online: the
+    friend picks their own), length and block flicks (a guest only sees its own shape).
+  - Leaving Online while in a match asks first. Joining by `/m/CODE` opens Play with Online chosen.
+  - A dot on a tab: amber for a new result, green while an online match is live.
+- The primary button and the pre-match card's button always show the same single action:
+  Kick off / Restart match; **Create online match** (Online chosen, no match yet); **Waiting for
+  your friend** (hosting, nobody joined: disabled, drawn outlined); **Your friend kicks off**
+  (guest). After a settings change mid-match it reads "Kick off with these settings" and pulses.
+- While hosting, the away side is "Your friend" until they join; the card shows the match code.
+- **Commentary** (the status line) is a caption strip along the foot of the scoreboard, always two
+  lines tall, so a long message never moves the pitch (it used to make the page jump on phones).
+  Each new line fades in; a line too long for two lines steps down a size. The team-colour chip
+  sits at its start and a round sound toggle at its end.
 - Inputs have visible borders (34% chalk); focus is drawn inside the border (amber border plus
   inset ring) so a scrolling panel can't clip it.
 - Long club names wrap between words, never mid-word.
-- Two-player on one device ("A friend") alternates on the same screen.
-- Look: walnut table background, baize pitch, stadium scoreboard (amber digits), display font Big
-  Shoulders Display, body font Archivo. A deliberate single dark look.
+- Two-player on one device ("Same device") alternates on the same screen.
+- Look: a floodlit ground at night (deep green backdrop, light from the stands, fine grain), baize
+  pitch, stadium scoreboard (amber digits). Display font Big Shoulders Display for headings, tabs,
+  buttons and toggles (uppercase); body font Archivo for text and inputs. Overlays dim with a soft
+  vignette, not a box. A deliberate single dark look.
 
 ## Local storage keys
 
@@ -237,3 +281,4 @@ The prototype used `ff2_mode, ff2_diff, ff2_away, ff2_fmt, ff2_blockOn, ff2_soun
 ff2_form1, ff2_club, ff2_oppClub, ff2_cup`. The port uses the same names with an `ff_` prefix
 (`src/client/src/ui/settings.ts`). On first load it copies any `ff2_` value that has no `ff_`
 counterpart, so testers keep their club and settings. Stored values are validated on load.
+`ff_results` (new in the port) holds the Results list.

@@ -198,10 +198,12 @@ public sealed class RoomRegistryTests
         _rooms.Publish("host", State(ph: "aim", tn: 1));
 
         Assert.True(_rooms.Flick("guest", new FlickDto(5, 14, 0, -500, 0)).Accepted);
-        Assert.False(_rooms.Flick("guest", new FlickDto(5, 14, 0, -500, 0)).Accepted);
-        Assert.False(_rooms.Flick("spec", new FlickDto(6, 14, 0, -500, 0)).Accepted);
-        Assert.False(_rooms.Flick("host", new FlickDto(7, 14, 0, -500, 0)).Accepted);
-        Assert.False(_rooms.Flick("guest", new FlickDto(8, 14, double.NaN, -500, 0)).Accepted);
+        Assert.True(_rooms.Flick("guest", new FlickDto(6, 21, 0, -500, 0)).Accepted); // its keeper's kick
+        Assert.False(_rooms.Flick("guest", new FlickDto(7, 20, 0, -500, 0)).Accepted); // the host's keeper
+        Assert.False(_rooms.Flick("guest", new FlickDto(6, 14, 0, -500, 0)).Accepted);
+        Assert.False(_rooms.Flick("spec", new FlickDto(8, 14, 0, -500, 0)).Accepted);
+        Assert.False(_rooms.Flick("host", new FlickDto(9, 14, 0, -500, 0)).Accepted);
+        Assert.False(_rooms.Flick("guest", new FlickDto(10, 14, double.NaN, -500, 0)).Accepted);
     }
 
     [Fact]
@@ -214,6 +216,60 @@ public sealed class RoomRegistryTests
         Assert.True(_rooms.Flick("guest", new FlickDto(1, 12, 100, 0, 1)).Accepted);
         Assert.True(_rooms.Skip("guest", 1).Accepted);
         Assert.False(_rooms.Skip("guest", 1).Accepted);
+    }
+
+    [Fact]
+    public void Restart_taker_moves_reach_the_host_only_on_the_guests_turn()
+    {
+        var code = Create();
+        _rooms.Join("guest", code, Friend, "4-4-2", null);
+        _rooms.Join("spec", code, Club, "4-4-2", null);
+        _rooms.Publish("host", State(ph: "aim", tn: 1));
+
+        var n = Assert.Single(_rooms.Place("guest", new PlaceDto(14, -20, 300)));
+        Assert.Equal("Place", n.Method);
+        Assert.Equal(["host"], n.To);
+        Assert.Empty(_rooms.Place("spec", new PlaceDto(14, 10, 300)));
+        Assert.Empty(_rooms.Place("guest", new PlaceDto(4, 10, 300))); // the host's player
+        Assert.Empty(_rooms.Place("guest", new PlaceDto(14, double.NaN, 300)));
+        Assert.Empty(_rooms.Place("guest", new PlaceDto(14, -500, 300))); // nowhere a player can stand
+
+        _rooms.Publish("host", State(ph: "aim", tn: 0));
+        Assert.Empty(_rooms.Place("guest", new PlaceDto(14, 10, 300)));
+    }
+
+    [Fact]
+    public void Play_anyone_opens_a_public_match_then_pairs_the_next_player_with_it()
+    {
+        var (first, _) = _rooms.FindMatch("a", "1.1.1.1", Club, "4-4-2");
+        Assert.True(first.Ok);
+        Assert.Equal("host", first.Seat);
+        Assert.True(_rooms.Find(first.Code!)!.Public);
+
+        var (second, notices) = _rooms.FindMatch("b", "2.2.2.2", Friend, "5-3-2");
+        Assert.True(second.Ok);
+        Assert.Equal("guest", second.Seat);
+        Assert.Equal(first.Code, second.Code);
+        Assert.Equal("Baize Rovers", second.OtherClub!.Name);
+        Assert.Contains(notices, n => n.Method == "GuestJoined" && n.To.Contains("a"));
+
+        // The match is full now: the next player opens a new public match.
+        var (third, _) = _rooms.FindMatch("c", "3.3.3.3", Club, "4-4-2");
+        Assert.Equal("host", third.Seat);
+        Assert.NotEqual(first.Code, third.Code);
+    }
+
+    [Fact]
+    public void Play_anyone_skips_private_matches_and_hosts_who_have_dropped()
+    {
+        var privateCode = Create("p");
+        var (waiting, _) = _rooms.FindMatch("a", "1.1.1.1", Club, "4-4-2");
+        _rooms.Disconnected("a");
+
+        var (r, _) = _rooms.FindMatch("b", "2.2.2.2", Friend, "4-4-2");
+        Assert.Equal("host", r.Seat);
+        Assert.NotEqual(privateCode, r.Code);
+        Assert.NotEqual(waiting.Code, r.Code);
     }
 
     [Fact]

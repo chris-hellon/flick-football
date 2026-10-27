@@ -126,6 +126,6 @@ created on the website.
 
 - Server-authoritative matches (see ONLINE_PROTOCOL.md).
 - A dedicated domain once it has players.
-- A lobby of open matches; friendly leagues.
+- A lobby listing open matches (quick pairing with "Play anyone" is done); friendly leagues.
 - Club badges, more shirt patterns, kit numbers.
 - Accessibility: keyboard aiming, reduced-motion banners, colour-blind-safe aim colours.

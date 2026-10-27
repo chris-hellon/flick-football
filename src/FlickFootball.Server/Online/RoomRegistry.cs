@@ -21,6 +21,8 @@ public sealed class Room
     public required string Code { get; init; }
     public required string CreatorIp { get; init; }
     public required DateTimeOffset Created { get; init; }
+    /// <summary>Open to anyone who taps "Play anyone", not just people with the code.</summary>
+    public bool Public { get; set; }
     public required SeatHolder Host { get; init; }
     public SeatHolder? Guest { get; set; }
     public List<SeatHolder> Spectators { get; } = [];
@@ -169,6 +171,26 @@ public sealed class RoomRegistry(IOptions<MatchOptions> options, TimeProvider ti
         static JoinResult Fail(string error) => new(false, error, null, null, null, null, null, false, null);
     }
 
+    /// <summary>
+    /// "Play anyone": takes the guest seat in the longest-waiting public match whose host is here,
+    /// or opens a new public match for the next person to join.
+    /// </summary>
+    public (JoinResult Result, IReadOnlyList<Notice> Notices) FindMatch(string connId, string ip, ClubDto? club, string? form)
+    {
+        lock (_gate)
+        {
+            var open = _rooms.Values
+                .Where(r => r.Public && r.Guest is null && r.Host.ConnectionId is { } h && h != connId)
+                .MinBy(r => r.Created);
+            if (open is not null) return Join(connId, open.Code, club, form, null);
+            var (created, notices) = Create(connId, ip, club, form);
+            if (!created.Ok || created.Code is null)
+                return (new JoinResult(false, created.Error, null, null, null, null, null, false, null), notices);
+            _rooms[created.Code].Public = true;
+            return (new JoinResult(true, null, created.Code, created.Seat, created.Token, null, null, false, null), notices);
+        }
+    }
+
     public IReadOnlyList<Notice> UpdateClub(string connId, ClubDto? club, string? form)
     {
         lock (_gate)
@@ -219,6 +241,20 @@ public sealed class RoomRegistry(IOptions<MatchOptions> options, TimeProvider ti
             if (room.Host.ConnectionId is not { } host) return (false, None);
             room.LastFlickN = f.N;
             return (true, [new("Flick", [host], [f])]);
+        }
+    }
+
+    /// <summary>Passes a guest's restart-taker move to the host on the guest's turn.</summary>
+    public IReadOnlyList<Notice> Place(string connId, PlaceDto? place)
+    {
+        var p = Validation.CleanPlace(place);
+        if (p is null) return None;
+        lock (_gate)
+        {
+            if (!_byConn.TryGetValue(connId, out var at) || at.Seat != Seat.Guest) return None;
+            var room = at.Room;
+            if (room.Summary is not { GuestMayPlace: true } || room.Host.ConnectionId is not { } host) return None;
+            return [new("Place", [host], [p])];
         }
     }
 

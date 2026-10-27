@@ -10,6 +10,10 @@ export interface Controls {
   canAim(): boolean;
   pickPlayer(x: number, y: number): TeamBody | null;
   tappedLocked(x: number, y: number): void;
+  /** Whether a press here starts moving the restart taker (near the ball, not on a player). */
+  canPlaceAt(x: number, y: number): boolean;
+  /** Moves the restart taker towards a point; done: the drag has ended. */
+  place(x: number, y: number, done: boolean): void;
   flick(p: TeamBody, vx: number, vy: number): void;
   /** The aim preview while dragging (null when the drag ends). */
   aim(a: AimDto | null): void;
@@ -20,6 +24,8 @@ export interface Controls {
 export class Input {
   drag: Drag | null = null;
   hover: TeamBody | null = null;
+  /** Dragging the restart taker into position. */
+  placing = false;
   private readonly controls: Controls;
 
   constructor(
@@ -35,6 +41,13 @@ export class Input {
       if (!controls.canAim()) return;
       const w = renderer.toWorld(e.clientX, e.clientY);
       const p = controls.pickPlayer(w.x, w.y);
+      if (!p && controls.canPlaceAt(w.x, w.y)) {
+        this.placing = true;
+        controls.place(w.x, w.y, false);
+        cv.setPointerCapture(e.pointerId);
+        e.preventDefault();
+        return;
+      }
       if (!p) return controls.tappedLocked(w.x, w.y);
       this.drag = { p, x: w.x, y: w.y, block: controls.phase() === "block" };
       cv.setPointerCapture(e.pointerId);
@@ -42,6 +55,10 @@ export class Input {
     });
     cv.addEventListener("pointermove", (e) => {
       const w = renderer.toWorld(e.clientX, e.clientY);
+      if (this.placing) {
+        controls.place(w.x, w.y, false);
+        return;
+      }
       if (this.drag) {
         this.drag.x = w.x;
         this.drag.y = w.y;
@@ -50,11 +67,25 @@ export class Input {
       }
       this.hover = controls.canAim() ? controls.pickPlayer(w.x, w.y) : null;
     });
-    cv.addEventListener("pointerup", () => this.release(false));
-    cv.addEventListener("pointercancel", () => this.release(true));
+    cv.addEventListener("pointerup", (e) => {
+      if (this.endPlacing(renderer.toWorld(e.clientX, e.clientY))) return;
+      this.release(false);
+    });
+    cv.addEventListener("pointercancel", () => {
+      if (this.endPlacing(null)) return;
+      this.release(true);
+    });
     cv.addEventListener("pointerleave", () => {
       this.hover = null;
     });
+  }
+
+  /** Finishes a taker move; returns whether one was in progress. */
+  private endPlacing(at: { x: number; y: number } | null): boolean {
+    if (!this.placing) return false;
+    this.placing = false;
+    if (at) this.controls.place(at.x, at.y, true);
+    return true;
   }
 
   /** The current drag as a flick velocity, for aim previews. */
@@ -96,10 +127,11 @@ export class Input {
   clear(): void {
     if (this.drag) this.controls.aim(null);
     this.drag = null;
+    this.placing = false;
     this.hover = null;
   }
 
   view(): ViewState {
-    return { drag: this.drag, hover: this.hover };
+    return { drag: this.drag, hover: this.hover, placing: this.placing };
   }
 }

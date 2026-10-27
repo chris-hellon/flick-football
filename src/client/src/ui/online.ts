@@ -1,5 +1,5 @@
 import type { TeamBody } from "../engine/body";
-import { playerById } from "../engine/world";
+import { figureById } from "../engine/world";
 import type { HubClient } from "../net/hub";
 import { FxLog } from "../net/fxLog";
 import { GuestView } from "../net/guestView";
@@ -9,6 +9,7 @@ import {
   cleanAim,
   cleanFlick,
   cleanForm,
+  cleanPlace,
   cleanState,
   isCode,
   normaliseCode,
@@ -21,6 +22,7 @@ import { cleanClub, DEFAULT_OPP, type ClubData } from "../rules/clubs";
 import type { FormationName } from "../rules/formations";
 import type { Match } from "../rules/match";
 import { el } from "./dom";
+import { flagTab } from "./tabs";
 
 /** What the online controller needs from the page. */
 export interface OnlineHost {
@@ -33,6 +35,8 @@ export interface OnlineHost {
   setFriendClub(club: ClubData): void;
   /** Re-run the pre-match card if we're on it (settings or players changed); force: whatever is showing. */
   refreshPreMatch(force?: boolean): void;
+  /** Show the online controls (Play tab, Online chosen): a /m/ link or a dropped friend. */
+  showOnline(): void;
   /** Bring the pitch into view (on a phone the card you tapped is far below it). */
   showPitch(): void;
   /** Our seat changed: guest view on/off, flipped pitch, buttons. */
@@ -93,6 +97,8 @@ export class Online {
   private hub: HubClient | null = null;
   private token: string | null = null;
   private busy = false;
+  /** A "Play anyone" match: the other player is a stranger, not a friend. */
+  isPublic = false;
   private reconnecting = false;
   private lastFlickN = 0;
   private lastSkipN = 0;
@@ -101,6 +107,7 @@ export class Online {
   private sentAt = 0;
   private lastKey = "";
   private aimAt = 0;
+  private placeAt = 0;
   private dropTimer = 0;
   private readonly app: OnlineHost;
 
@@ -133,8 +140,9 @@ export class Online {
       const code = normaliseCode(linked);
       el<HTMLInputElement>("onCode").value = code;
       this.app.status(`Tap Join to play in match ${code}.`);
-      // The online card sits below the pitch on a phone: bring Join into view.
-      el("onlineCard").scrollIntoView({ block: "center" });
+      // The menu sits below the pitch on a phone: show the online controls and bring Join into view.
+      this.app.showOnline();
+      el("onJoin").scrollIntoView({ block: "center" });
       el("onJoin").focus({ preventScroll: true });
     }
   }
@@ -156,6 +164,7 @@ export class Online {
           Flick: (f) => this.onFlick(f),
           Aim: (a) => this.onAim(a),
           Skip: (n) => this.onSkip(n),
+          Place: (p) => this.onPlace(p),
           RoomClosed: (reason) => this.onRoomClosed(reason),
         },
         {
@@ -188,6 +197,23 @@ export class Online {
         return this.showError(r.error ?? "Couldn't open a match. Try again in a moment.");
       this.enter("host", r.code, r.token, false);
       this.app.refreshPreMatch(true);
+    } finally {
+      this.busy = false;
+    }
+  }
+
+  /** "Play anyone": paired with whoever is waiting, or wait for the next person to tap it. */
+  async findAnyone(): Promise<void> {
+    if (this.role || this.busy) return;
+    this.busy = true;
+    try {
+      const hub = await this.connect();
+      if (!hub) return;
+      const r = await hub.findMatch(this.app.myClub(), this.app.myForm());
+      if (!r.ok || !r.code || !r.seat || !r.token)
+        return this.showError(r.error ?? "Couldn't find a match. Try again in a moment.");
+      this.isPublic = true;
+      this.applyJoin(r, r.code);
     } finally {
       this.busy = false;
     }
@@ -242,7 +268,7 @@ export class Online {
     if (r.lastState) this.onState(r.lastState);
     else
       this.app.status(
-        seat === "guest" ? "Connected. Your friend kicks off." : "Watching the match.",
+        seat === "guest" ? `Connected. Your ${this.them} kicks off.` : "Watching the match.",
       );
     this.app.showPitch();
   }
@@ -280,6 +306,7 @@ export class Online {
 
   private reset(): void {
     clearTimeout(this.dropTimer);
+    this.isPublic = false;
     this.role = null;
     this.code = "";
     this.token = null;
@@ -348,6 +375,7 @@ export class Online {
           m.cfg?.mode === "online"
         )
           el("onDropped").hidden = false;
+        this.app.showOnline();
       }, DROP_OFFER_MS);
     } else this.app.refreshPreMatch();
     this.updateCard();
@@ -372,11 +400,20 @@ export class Online {
       m.actor() !== 1
     )
       return;
-    const p = playerById(m.world, f.id);
+    const p = figureById(m.world, f.id);
     if (!p || p.team !== 1) return;
     this.lastFlickN = f.n;
     this.remoteAim = null;
     m.humanFlick(p, f.vx, f.vy);
+  }
+
+  /** The guest moves its throw-in or corner taker. */
+  private onPlace(raw: unknown): void {
+    const p = cleanPlace(raw);
+    const m = this.app.match;
+    if (this.role !== "host" || !p || m.cfg?.mode !== "online" || m.turn !== 1) return;
+    if (m.placing?.id !== p.id) return;
+    m.placeTaker(p.x, p.y);
   }
 
   private onSkip(n: unknown): void {
@@ -453,6 +490,15 @@ export class Online {
     });
   }
 
+  /** Taker moves while dragging: at most 10 a second, plus the final spot (final: true). */
+  sendPlace(p: TeamBody, final: boolean): void {
+    if (this.role !== "guest" || !this.hub) return;
+    const now = performance.now();
+    if (!final && now - this.placeAt < AIM_MS) return;
+    this.placeAt = now;
+    this.hub.sendPlace({ id: p.id, x: Math.round(p.x * 10) / 10, y: Math.round(p.y * 10) / 10 });
+  }
+
   /** Aim previews: at most 10 a second, and only while dragging. */
   sendAim(a: AimDto | null): void {
     if (this.role !== "guest" || !this.hub) return;
@@ -469,8 +515,13 @@ export class Online {
   }
 
   // ---------- Card ----------
+  /** What to call the other player. */
+  get them(): string {
+    return this.isPublic ? "opponent" : "friend";
+  }
+
   private wire(): void {
-    el("onCreate").addEventListener("click", () => void this.create());
+    el("onAnyone").addEventListener("click", () => void this.findAnyone());
     el("onJoin").addEventListener(
       "click",
       () => void this.join(el<HTMLInputElement>("onCode").value),
@@ -544,6 +595,7 @@ export class Online {
 
   updateCard(): void {
     const live = !!this.role;
+    flagTab("play", live ? "live" : null);
     el("onIdle").hidden = live;
     el("onLive").hidden = !live;
     if (!live) return;
@@ -554,7 +606,9 @@ export class Online {
     if (this.reconnecting) msg = "Connection lost. Reconnecting…";
     else if (this.role === "host")
       msg = !this.otherPresent
-        ? "Waiting for your friend. Send them the code or the link, and they enter the code under Join."
+        ? this.isPublic
+          ? "Looking for an opponent: the next person to tap Play anyone joins you. You can also send a friend the code."
+          : "Waiting for your friend. Send them the code or the link, and they enter the code under Join."
         : this.app.match.phase === "menu"
           ? `${friend} have joined. Press Kick off when you're ready.`
           : `Playing ${friend} online.`;
@@ -562,7 +616,7 @@ export class Online {
       msg = "This match already has two players, so you're watching.";
     else
       msg = this.otherPresent
-        ? "Connected. Your friend kicks off."
+        ? `Connected. Your ${this.them} kicks off.`
         : "Your friend has dropped out. They have two minutes to come back.";
     el("onMsg").textContent = msg;
     el("onLeave").textContent = this.role === "host" ? "End online match" : "Leave online match";

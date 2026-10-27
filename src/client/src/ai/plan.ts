@@ -1,5 +1,18 @@
 import type { Body, TeamBody } from "../engine/body";
-import { CX, DEC_B, DEC_P, GW, H, RB, RP, W, ZONE } from "../engine/constants";
+import {
+  CX,
+  DEC_B,
+  DEC_P,
+  GW,
+  H,
+  KEEPER_KICK,
+  LIN_B,
+  MAXV,
+  RB,
+  RP,
+  W,
+  ZONE,
+} from "../engine/constants";
 import type { World } from "../engine/world";
 import { clamp, rnd, type Rng } from "../util/math";
 import type { AiSkill } from "./skill";
@@ -201,4 +214,58 @@ export function planBlock(world: World, A: AiSkill, rng: Rng): FlickPlan | null 
   if (!best) return null;
   const v0 = Math.sqrt(2 * DEC_P * best.L) * 0.93;
   return { p: best.p, vx: best.ux * v0, vy: best.uy * v0 };
+}
+
+/** The ball speed that rolls about d units before stopping (constant drag plus linear damping). */
+export function ballSpeedFor(d: number): number {
+  const a = DEC_B;
+  const k = LIN_B;
+  const reach = (v: number): number => {
+    const c = a / k;
+    const t = Math.log((v + c) / c) / k;
+    return ((v + c) / k) * (1 - Math.exp(-k * t)) - c * t;
+  };
+  let lo = 0;
+  let hi = MAXV;
+  for (let i = 0; i < 40; i++) {
+    const mid = (lo + hi) / 2;
+    if (reach(mid) < d) lo = mid;
+    else hi = mid;
+  }
+  return hi;
+}
+
+/**
+ * The computer's keeper's kick: to an unmarked team-mate up the pitch (or simply upfield), with an
+ * error that shrinks as the level rises. Returns the keeper's slingshot velocity.
+ */
+export function planKeeperKick(
+  world: World,
+  team: 0 | 1,
+  attacksUp: boolean,
+  A: AiSkill,
+  rng: Rng,
+): FlickPlan {
+  const { ball, players } = world;
+  const k = world.keepers[team];
+  const ahead = (y: number): number => (attacksUp ? ball.y - y : y - ball.y);
+  let best: { x: number; y: number } | null = null;
+  let bs = -Infinity;
+  for (const p of players) {
+    if (p.team !== team || ahead(p.y) < 150) continue;
+    let near = Infinity;
+    for (const q of players)
+      if (q.team !== team) near = Math.min(near, Math.hypot(q.x - p.x, q.y - p.y));
+    const score = Math.min(ahead(p.y), 520) + Math.min(near, 160) * 1.5 + rnd(rng, 0, 80);
+    if (score > bs) {
+      bs = score;
+      best = p;
+    }
+  }
+  const tx = best ? best.x : CX + rnd(rng, -160, 160);
+  const ty = best ? best.y : ball.y + (attacksUp ? -460 : 460);
+  const d = Math.max(60, Math.hypot(tx - ball.x, ty - ball.y) - 30);
+  const ang = Math.atan2(ty - ball.y, tx - ball.x) + rnd(rng, -1, 1) * A.noise;
+  const v = Math.min(MAXV, (ballSpeedFor(d) * (1 + rnd(rng, -A.pErr, A.pErr))) / KEEPER_KICK);
+  return { p: k, vx: Math.cos(ang) * v, vy: Math.sin(ang) * v };
 }

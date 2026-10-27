@@ -45,19 +45,15 @@ describe("half time and change of ends", () => {
     expect(kicker?.y).toBe(H / 2 + RP + RB + 4);
   });
 
-  it("points goal kicks at the right goal in each half", () => {
+  it("gives goal kicks to the keeper at the right end in each half", () => {
     const { m } = harness({ fmt: "t3" });
     m.doRestart(1, CX, 75, "gk");
-    const taker1 = m.world.players.find(
-      (p) => p.team === 1 && p.x === CX && p.y < 75,
-    );
-    expect(taker1).toBeDefined(); // away defends the top goal: taker stands behind the ball, nearer the goal line
+    expect(m.keeperBall).toBe(1);
+    expect(m.world.ball.y).toBeLessThan(60); // away defends the top goal in the first half
     playToHalfTime(m);
     m.doRestart(1, CX, H - 75, "gk");
-    const taker2 = m.world.players.find(
-      (p) => p.team === 1 && p.x === CX && p.y > H - 75,
-    );
-    expect(taker2).toBeDefined();
+    expect(m.keeperBall).toBe(1);
+    expect(m.world.ball.y).toBeGreaterThan(H - 60);
   });
 
   it("scores second-half goals at the swapped ends", () => {

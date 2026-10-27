@@ -20,6 +20,9 @@ Model in the prototype, kept for v1:
 - **Spectators** are any further joiners; they render snapshots and cannot flick.
 - The guest's view is rotated 180° so their side also attacks up the screen. Text is drawn upright
   (the `upright()` helper), and the "SHOOTING AREA" labels right-align in that view.
+- The host's page keeps the match running in a background tab or a covered window. Browsers stop
+  animation frames there, so while hosting a worker timer (`ui/ticker.ts`, every 50 ms) steps the
+  match and publishes snapshots whenever no frame has run for 150 ms.
 - After half time the teams change ends. The snapshot carries `sw` so the guest's figures face the
   right way.
 
@@ -46,16 +49,18 @@ Client to server:
 | Method | Who | Payload | Effect |
 | --- | --- | --- | --- |
 | `CreateMatch(club, form)` | anyone | `ClubDto`, formation | Creates a room. Returns `{ code, seat: "host", token }`. |
+| `FindMatch(club, form)` | anyone | | "Play anyone": takes the guest seat in the longest-waiting public match whose host is connected, or opens a new public match (host seat). Returns a `JoinResult`. Public matches are ordinary rooms with a flag; they count towards the same limits. |
 | `JoinMatch(code, club, form, token?)` | anyone | | Returns `{ ok, error, code, seat, token, otherClub, otherForm, otherPresent, lastState }`. Tells the host `GuestJoined(club, form)`. |
 | `UpdateClub(club, form)` | host, guest | | Relayed to the other player (pre-match card updates live). |
 | `PublishState(state)` | host | `StateDto` | Stored as latest; relayed to the guest and spectators. Dropped if over 8 KB. |
 | `SendFlick(flick)` | guest | `{ n, id, vx, vy, b }` | Relayed to the host only. |
 | `SendAim(aim?)` | host, guest | `{ id, vx, vy, b }` or null | Relayed to the other player. (The client's host sends its aim inside the snapshot's `am` instead.) |
 | `SendSkip(n)` | guest | sequence number | Relayed to the host. |
+| `SendPlace(place)` | guest | `{ id, x, y }` | Moves the guest's throw-in or corner taker. Relayed to the host only on the guest's turn; the host checks it's the current taker and applies the same limits as offline. At most 10 a second while dragging, plus the final spot. |
 | `Leave()` | any | | Frees the seat; tells the others. |
 
 Server to client: `GuestJoined`, `GuestLeft`, `HostLeft`, `HostReturned`, `ClubUpdated`, `State`,
-`Flick`, `Aim`, `Skip`, `RoomClosed(reason)`.
+`Flick`, `Aim`, `Skip`, `Place`, `RoomClosed(reason)`.
 
 Recipients come from the registry's connection → seat map rather than SignalR groups, so a seat
 taken back on a new connection needs no group bookkeeping. `OnDisconnectedAsync` marks seats empty
@@ -70,6 +75,8 @@ type ClubDto = { name: string; code: string; shirt: string; alt: string; base: s
 type StateDto = {
   ph: "menu"|"aim"|"think"|"moving"|"block"|"blockthink"|"pause"|"replay"|"over";
   tn: 0|1; lk: number|null;           // turn, locked player id
+  pt: number|null;                    // restart taker that can still be moved
+  kb: 0|1|null;                       // side whose keeper has the ball (keeper's kick)
   sc: [number, number]; hf: 1|2|"gg"; cl: number;   // score, half, seconds left
   fmt: "t3"|"t5"|"g3"|"g5"; bl: 0|1; fo: [string, string]; sw: 0|1;
   p: number[];                        // 46 ints: x·10, y·10 for players 0–19, keepers 0–1, ball
@@ -104,7 +111,7 @@ Treat everything from a peer as untrusted:
 - Club: name trimmed, control characters stripped, max 20; code `[A-Z0-9]{0,3}`; colours
   `^#[0-9a-f]{6}$`; pattern from the list. Render names with `textContent`, never `innerHTML`.
 - Formation must be one of the six keys.
-- Flick: `id` must be one of the guest's players (10–19) and not locked; `vx, vy` finite; speed
+- Flick: `id` must be one of the guest's players (10–19), or its keeper (21) for the keeper's kick, and not locked; `vx, vy` finite; speed
   clamped to 1500. Applied only when it is the guest's turn (or their block flick). Sequence
   numbers must increase.
 - Snapshot arrays checked for length and finite numbers before use; unknown phases fall back to "pause".

@@ -41,6 +41,11 @@ export const MAX_FLICK_TIME = 9;
 export const RUN_OFF = 34;
 /** Keepers' goal line offset from the end line. */
 export const KEEPER_LINE = 14;
+/** The goal area (the small box): half its width and its depth from the end line. */
+export const GOAL_AREA_HW = 91.5;
+export const GOAL_AREA_D = 55;
+/** A keeper's kick: ball speed per unit of slingshot speed (a kick from the hands, not a full hit). */
+export const KEEPER_KICK = 0.8;
 
 /** Launch speed for a pull of distance d (before the direction is applied). */
 export const launchSpeed = (d: number): number =>

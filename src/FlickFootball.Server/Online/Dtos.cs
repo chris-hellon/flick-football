@@ -8,6 +8,9 @@ public sealed record ClubDto(string? Name, string? Code, string? Shirt, string? 
 /// <summary>A guest's flick: sequence number, player id, velocity, block flick flag.</summary>
 public sealed record FlickDto(long N, int Id, double Vx, double Vy, int B);
 
+/// <summary>A guest moving its restart taker to a new spot before taking it (world units).</summary>
+public sealed record PlaceDto(int Id, double X, double Y);
+
 /// <summary>An aim preview while a player drags.</summary>
 public sealed record AimDto(int Id, double Vx, double Vy, int B);
 

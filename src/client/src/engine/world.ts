@@ -2,11 +2,13 @@ import { makeBody, type Ball, type Team, type TeamBody, type Body } from "./body
 import { BALL_MASS, CX, GW, H, KEEPER_LINE, KR, PLAYER_MASS, POST_R, RB, RP } from "./constants";
 
 export const PLAYERS_PER_SIDE = 10;
+/** Keepers' ids (home, away), after the outfield players' 0–19. */
+export const KEEPER_IDS = [20, 21] as const;
 
 export interface World {
   /** Ids 0–9 are home, 10–19 away. */
   players: TeamBody[];
-  /** keepers[0] is home's, keepers[1] away's. */
+  /** keepers[0] is home's (id 20), keepers[1] away's (id 21). */
   keepers: [TeamBody, TeamBody];
   ball: Ball;
   posts: Body[];
@@ -29,6 +31,8 @@ export function createWorld(): World {
     makeBody("k", 0, CX, H - KEEPER_LINE, KR, Infinity) as TeamBody,
     makeBody("k", 1, CX, KEEPER_LINE, KR, Infinity) as TeamBody,
   ];
+  keepers[0].id = KEEPER_IDS[0];
+  keepers[1].id = KEEPER_IDS[1];
   const ball: Ball = {
     ...makeBody("ball", null, CX, H / 2, RB, BALL_MASS),
     last: null,
@@ -53,4 +57,9 @@ export function createWorld(): World {
 
 export function playerById(world: World, id: number): TeamBody | undefined {
   return world.players.find((p) => p.id === id);
+}
+
+/** An outfield player or a keeper by id (keepers can take the keeper's kick). */
+export function figureById(world: World, id: number): TeamBody | undefined {
+  return playerById(world, id) ?? world.keepers.find((k) => k.id === id);
 }

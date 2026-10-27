@@ -4,7 +4,15 @@ import {
   LogLevel,
   type HubConnection,
 } from "@microsoft/signalr";
-import type { AimDto, ClubDto, CreateResult, FlickDto, JoinResult, StateDto } from "./protocol";
+import type {
+  AimDto,
+  ClubDto,
+  CreateResult,
+  FlickDto,
+  JoinResult,
+  PlaceDto,
+  StateDto,
+} from "./protocol";
 
 /** Server-to-client events. Arguments are untrusted. */
 export interface HubEvents {
@@ -17,6 +25,7 @@ export interface HubEvents {
   Flick(flick: unknown): void;
   Aim(aim: unknown): void;
   Skip(n: unknown): void;
+  Place(place: unknown): void;
   RoomClosed(reason: unknown): void;
 }
 
@@ -61,6 +70,11 @@ export class HubClient {
     return this.conn.stop();
   }
 
+  /** "Play anyone": joins a waiting public match or opens one. */
+  findMatch(club: ClubDto, form: string): Promise<JoinResult> {
+    return this.conn.invoke<JoinResult>("FindMatch", club, form);
+  }
+
   createMatch(club: ClubDto, form: string): Promise<CreateResult> {
     return this.conn.invoke<CreateResult>("CreateMatch", club, form);
   }
@@ -84,6 +98,10 @@ export class HubClient {
 
   sendAim(aim: AimDto | null): void {
     this.send("SendAim", aim);
+  }
+
+  sendPlace(place: PlaceDto): void {
+    this.send("SendPlace", place);
   }
 
   sendSkip(n: number): void {

@@ -1,11 +1,14 @@
 import { Sound } from "../audio/sound";
 import type { Team } from "../engine/body";
-import { playerById } from "../engine/world";
+import { figureById } from "../engine/world";
 import { FxLog } from "../net/fxLog";
 import { clubDto, type AimDto, type ClubDto } from "../net/protocol";
 import { Renderer, type ViewState } from "../render/renderer";
 import {
   CLUB,
+  cleanClub,
+  DEFAULT_CLUB,
+  DEFAULT_OPP,
   makeClub,
   OPP,
   ORIGINAL_CLUBS,
@@ -23,18 +26,31 @@ import {
   type CupState,
 } from "../rules/cup";
 import {
+  addResult,
+  cleanResults,
+  cupsWon,
+  form,
+  headToHead,
+  outcome,
+  recordRows,
+  type MatchResult,
+  type WinRecord,
+} from "../rules/results";
+import {
   FORMATION_NAMES,
   isFormation,
   type FormationName,
   type FormChoice,
 } from "../rules/formations";
-import { Match, type MatchConfig, type MatchFormat } from "../rules/match";
+import { Match, PLACE_R, type MatchConfig, type MatchFormat } from "../rules/match";
 import { makeBuilder, type Builder } from "./builder";
 import { cupHTML } from "./cupView";
 import { el, esc } from "./dom";
 import { Input } from "./input";
 import { kitCSS } from "./kit";
 import { Online, type OnlineHost } from "./online";
+import { flagTab, initTabs, selectTab } from "./tabs";
+import { Ticker } from "./ticker";
 import {
   loadClub,
   loadOppClub,
@@ -51,6 +67,43 @@ const FMT_TEXT: Record<MatchFormat, string> = {
   g5: "First to 5 goals",
 };
 const DIFF_TEXT = ["Easy", "Medium", "Hard"] as const;
+const MODE_HINT = {
+  cpu: "You against the computer.",
+  pvp: "Two players taking turns on this device.",
+  online: "A friend on their own phone or computer.",
+} as const;
+/** Results listed before "Show all". */
+const RECENT = 10;
+const OUTCOME = { W: "Won", D: "Drawn", L: "Lost" } as const;
+const gd = (r: WinRecord): string => {
+  const d = r.gf - r.ga;
+  return d > 0 ? `+${d}` : String(d);
+};
+const resultDate = (at: number): string => {
+  const d = new Date(at);
+  const sameYear = d.getFullYear() === new Date().getFullYear();
+  return d.toLocaleDateString("en-GB", {
+    day: "numeric",
+    month: "short",
+    ...(sameYear ? {} : { year: "numeric" }),
+  });
+};
+/** "Friendly · Medium computer · 27 Oct" and so on. */
+function resultMeta(r: MatchResult): string {
+  const what =
+    r.kind === "cup"
+      ? `Cup ${(r.round ?? "tie").toLowerCase()}`
+      : r.kind === "online"
+        ? r.cpuFinished
+          ? "Online · computer finished it"
+          : "Online friendly"
+        : r.kind === "pvp"
+          ? "Two players"
+          : `Friendly · ${DIFF_TEXT[r.lvl ?? 1]} computer`;
+  return [what, r.gg ? "golden goal" : "", resultDate(r.at)].filter(Boolean).join(" · ");
+}
+/** No animation frame for this long means the page is in the background. */
+const STALLED_MS = 150;
 const rng = Math.random;
 const FRIEND: ClubData = {
   name: "Your friend",
@@ -79,6 +132,12 @@ export class App implements OnlineHost {
   private lastClock = "";
   private lastSkip: string | null = null;
   private last = 0;
+  private frameAt = 0;
+  private results: MatchResult[];
+  private allResults = false;
+  /** The friend left an online match and the computer finished it. */
+  private cpuFinished = false;
+  private readonly ticker = new Ticker(() => this.backgroundTick());
 
   constructor() {
     migrateLegacy();
@@ -92,6 +151,7 @@ export class App implements OnlineHost {
       makeClub(FRIEND),
     ];
     this.cup = cleanCup(store.get("cup"), CLUB);
+    this.results = cleanResults(store.get("results"));
     this.sound = new Sound(this.s.sound);
     const fx = new FxLog(this.sound);
     this.match = new Match(
@@ -114,6 +174,8 @@ export class App implements OnlineHost {
         canAim: () => this.canAim(),
         pickPlayer: (x, y) => this.match.pickPlayer(x, y),
         tappedLocked: (x, y) => void this.match.tappedLocked(x, y),
+        canPlaceAt: (x, y) => this.canPlace() && this.nearBall(x, y),
+        place: (x, y, done) => this.place(x, y, done),
         flick: (p, vx, vy) => {
           if (this.online.guestSide) this.online.sendFlick(p, vx, vy);
           else this.match.humanFlick(p, vx, vy);
@@ -151,6 +213,8 @@ export class App implements OnlineHost {
     void document.fonts?.ready.then(() => this.renderer.resize());
     this.preMatch();
     this.online.updateCard();
+    this.renderResults();
+    initTabs();
     this.online.resume();
     requestAnimationFrame((t) => {
       this.last = t;
@@ -184,6 +248,30 @@ export class App implements OnlineHost {
     return m.cfg?.mode !== "online" || (m.actor() === 0 && o.otherPresent);
   }
 
+  /** May this screen move the restart taker now? */
+  private canPlace(): boolean {
+    const m = this.match;
+    const o = this.online;
+    if (!m.canPlace()) return false;
+    if (o.guestSide) return o.role === "guest" && m.turn === 1;
+    return m.cfg?.mode !== "online" || (m.turn === 0 && o.otherPresent);
+  }
+
+  private nearBall(x: number, y: number): boolean {
+    const b = this.match.world.ball;
+    return Math.hypot(x - b.x, y - b.y) <= PLACE_R + 12;
+  }
+
+  private place(x: number, y: number, done: boolean): void {
+    const m = this.match;
+    const tk = m.placing;
+    if (!tk || !this.canPlace()) return;
+    // A guest moves its taker straight away; the host's next snapshot confirms the spot.
+    if (m.placeTaker(x, y) || done) {
+      if (this.online.guestSide) this.online.sendPlace(tk, done);
+    }
+  }
+
   private skipLabel(): string | null {
     const m = this.match;
     const o = this.online;
@@ -207,14 +295,15 @@ export class App implements OnlineHost {
     let a: AimDto | null = null;
     if (o.guestSide && m.actor() === 0) a = o.view.hostAim;
     else if (o.role === "host" && m.cfg?.mode === "online" && m.actor() === 1) a = o.remoteAim;
-    const p = a ? playerById(m.world, a.id) : undefined;
+    const p = a ? figureById(m.world, a.id) : undefined;
     return a && p ? { p, vx: a.vx, vy: a.vy, block: a.b === 1 } : null;
   }
 
   // ---------- Frame loop ----------
   private frame(now: number): void {
-    const dt = Math.min((now - this.last) / 1000, 0.05);
+    const dt = Math.max(0, Math.min((now - this.last) / 1000, 0.05));
     this.last = now;
+    this.frameAt = performance.now();
     if (this.online.guestSide) this.online.view.frame(dt);
     else {
       this.match.frame(dt);
@@ -223,21 +312,55 @@ export class App implements OnlineHost {
     this.input.tick();
     this.updateClock();
     this.updateSkip();
-    this.renderer.render(this.match, { ...this.input.view(), remoteAim: this.remoteAim() });
+    this.renderer.render(this.match, {
+      ...this.input.view(),
+      remoteAim: this.remoteAim(),
+      placeRing: this.canPlace(),
+    });
     requestAnimationFrame((t) => this.frame(t));
+  }
+
+  /**
+   * Browsers stop animation frames in a background tab or a covered window. The host's page runs
+   * the match for both players, so while hosting a worker timer keeps it going (nothing is drawn).
+   */
+  private backgroundTick(): void {
+    const now = performance.now();
+    if (this.online.role !== "host" || now - this.frameAt < STALLED_MS) return;
+    // Catch up in frame-sized steps if the timer lagged, but never more than a second at once.
+    let behind = Math.min(now - this.last, 1000);
+    this.last = now;
+    while (behind > 0) {
+      const step = Math.min(behind, 50);
+      this.match.frame(step / 1000);
+      behind -= step;
+    }
+    this.online.hostTick(now, null);
   }
 
   // ---------- Scoreboard ----------
   private showStatus(msg: string, team: Team): void {
     const m = this.match;
-    el("status").textContent = msg;
+    const line = el("status");
+    if (line.textContent !== msg) {
+      line.textContent = msg;
+      // Restart the fade-in for each new line of commentary.
+      line.classList.remove("fresh", "tight");
+      // A long line (two long club names) steps down a size rather than being cut off.
+      if (line.scrollHeight > line.clientHeight + 1) line.classList.add("tight");
+      void line.offsetWidth;
+      line.classList.add("fresh");
+    }
     el("chip").style.background = m.kits[team].shirt;
     el("t0").classList.toggle("on", m.actor() === 0);
     el("t1").classList.toggle("on", m.actor() === 1);
   }
 
+  /** A notice for this screen only. It isn't the match's status, so it never reaches the guest. */
   status(msg: string): void {
-    this.match.setStatus(msg, 0);
+    this.showStatus(msg, 0);
+    // A guest shows the host's status line again with the next snapshot.
+    if (this.online.guestSide) this.match.lastStatus = "";
   }
 
   board(): void {
@@ -281,7 +404,7 @@ export class App implements OnlineHost {
     const s = this.s;
     return {
       cup: false,
-      mode: s.mode,
+      mode: s.mode === "pvp" ? "pvp" : "cpu",
       lvl: s.diff,
       home: this.team(CLUB),
       away: this.team(s.away),
@@ -305,8 +428,64 @@ export class App implements OnlineHost {
     };
   }
 
+  /** Online chosen under Play against, or already hosting a match. */
+  private onlineMode(): boolean {
+    return this.s.mode === "online" || this.online.role === "host";
+  }
+
   private cfg(): MatchConfig {
-    return this.online.hosting ? this.onlineCfg() : this.friendlyCfg();
+    return this.onlineMode() ? this.onlineCfg() : this.friendlyCfg();
+  }
+
+  /** The one main action right now, shared by the side button and the pre-match card. */
+  private action(): { label: string; hint: string; go: (() => void) | null } {
+    const o = this.online;
+    const pre = this.match.phase === "menu";
+    const start = (): void => this.begin(this.cfg());
+    if (o.guestSide)
+      return o.role === "guest"
+        ? {
+            label: `Your ${o.them} kicks off`,
+            hint: o.isPublic
+              ? "You're in a public match."
+              : "You're in your friend's online match.",
+            go: null,
+          }
+        : { label: "Watching", hint: "This match already has two players.", go: null };
+    if (this.onlineMode()) {
+      if (!o.role)
+        return {
+          label: "Create online match",
+          hint: "Or join your friend's match with their code.",
+          go: () => void o.create(),
+        };
+      if (!o.otherPresent)
+        return o.isPublic
+          ? {
+              label: "Finding an opponent…",
+              hint: "The next person to tap Play anyone joins you.",
+              go: null,
+            }
+          : {
+              label: "Waiting for your friend",
+              hint: `Send them the code ${o.code} or the link.`,
+              go: null,
+            };
+      return pre
+        ? {
+            label: "Kick off",
+            hint: `Your ${o.them} is here. Kick off when you're both ready.`,
+            go: start,
+          }
+        : {
+            label: "Restart match",
+            hint: `Starts a fresh online match with your ${o.them}.`,
+            go: start,
+          };
+    }
+    return pre
+      ? { label: "Kick off", hint: "The match starts when you press this.", go: start }
+      : { label: "Restart match", hint: "Starts a fresh match with the Play settings.", go: start };
   }
 
   private hideOverlays(): void {
@@ -320,6 +499,7 @@ export class App implements OnlineHost {
     this.input.clear();
     this.sound.init();
     this.online.fx.entries = [];
+    this.cpuFinished = false;
     this.match.start(cfg);
     this.updateClock();
     this.clearDirty();
@@ -327,26 +507,33 @@ export class App implements OnlineHost {
   }
 
   private startFriendly(): void {
-    if (this.online.guestSide) return;
-    this.begin(this.cfg());
+    this.action().go?.();
   }
 
   /** Lines the teams up on the pre-match card: nothing runs until Kick off. */
   private preMatch(): void {
     if (this.online.guestSide) return;
     this.input.clear();
+    const o = this.online;
+    // Until a friend joins, the away side is a placeholder.
+    if (this.onlineMode() && !o.otherPresent) Object.assign(this.team(REMOTE), makeClub(FRIEND));
     const cfg = this.cfg();
-    const msg = this.online.hosting
-      ? `${cfg.away.name} are here. Press Kick off when you're both ready.`
-      : this.online.role === "host"
-        ? "Waiting for your friend to join. You can still change your club."
-        : undefined;
+    const msg = !this.onlineMode()
+      ? undefined
+      : o.otherPresent
+        ? `${cfg.away.name} are here. Press Kick off when you're both ready.`
+        : o.role === "host"
+          ? o.isPublic
+            ? "Looking for an opponent. You can still change your club."
+            : `Waiting for your friend to join with code ${o.code}. You can still change your club.`
+          : "Create an online match and send your friend the code, or join theirs.";
     this.match.preMatch(cfg, msg);
     this.updateClock();
     this.syncPre();
     this.hideOverlays();
     el("preOver").hidden = false;
-    this.setPreKick(true, "Kick off");
+    const a = this.action();
+    this.setPreKick(!!a.go, a.label);
     this.clearDirty();
     this.online.updateCard();
   }
@@ -367,14 +554,22 @@ export class App implements OnlineHost {
     }
     const who =
       cfg.mode === "online"
-        ? "Online friendly"
+        ? this.online.role === "host" && !this.online.otherPresent
+          ? `Code ${this.online.code}`
+          : ""
         : cfg.mode === "pvp"
           ? "Two players"
           : `${DIFF_TEXT[this.s.diff]} computer`;
-    el("preInfo").textContent = `${FMT_TEXT[cfg.fmt]} · ${who} · ${cfg.forms[0]} v ${cfg.forms[1]}`;
+    // Each part stays on one line ("4-4-2 v 4-4-2" must never break at a hyphen).
+    el("preInfo").innerHTML = [FMT_TEXT[cfg.fmt], who, `${cfg.forms[0]} v ${cfg.forms[1]}`]
+      .filter(Boolean)
+      .map((x) => `<span class="nb">${esc(x)}</span>`)
+      .join(" · ");
+    el("preTag").textContent = cfg.mode === "online" ? "Online friendly" : "Friendly";
   }
 
-  private showFullTime(): void {
+  /** save: false when a guest rejoins a match that had already finished (saved the first time). */
+  private showFullTime(save = true): void {
     const m = this.match;
     const cfg = m.cfg;
     if (!cfg) return;
@@ -414,8 +609,95 @@ export class App implements OnlineHost {
     else if (cfg.mode === "online") ftNext.textContent = "Rematch";
     else ftNext.textContent = "Play again";
     el("ftOver").hidden = false;
+    if (save) this.saveResult();
     if (!this.online.guestSide)
       m.setStatus(`Full time. ${N(0)} ${m.score[0]}, ${N(1)} ${m.score[1]}.`, w ?? 0);
+  }
+
+  // ---------- Results ----------
+  /** Keeps the finished match on this device. Spectators don't keep anything. */
+  private saveResult(): void {
+    const m = this.match;
+    const cfg = m.cfg;
+    const o = this.online;
+    if (!cfg || (o.guestSide && o.role !== "guest")) return;
+    const me = o.role === "guest" ? 1 : 0;
+    const them = me === 0 ? 1 : 0;
+    const online = o.role !== null || this.cpuFinished;
+    const r: MatchResult = {
+      at: Date.now(),
+      kind: cfg.cup ? "cup" : online ? "online" : cfg.mode === "pvp" ? "pvp" : "cpu",
+      lvl: null,
+      round: cfg.cup ? (ROUNDS[this.cup?.round ?? 0] ?? null) : null,
+      me: cleanClub(m.kits[me], DEFAULT_CLUB),
+      opp: cleanClub(m.kits[them], DEFAULT_OPP),
+      gf: m.score[me],
+      ga: m.score[them],
+      gg: m.half === "gg",
+      cpuFinished: this.cpuFinished,
+    };
+    if (r.kind === "cpu") r.lvl = cfg.lvl < 0.5 ? 0 : cfg.lvl < 1.5 ? 1 : 2;
+    this.results = addResult(this.results, r);
+    store.set("results", this.results);
+    this.renderResults();
+    flagTab("results", "new");
+  }
+
+  private renderResults(): void {
+    const list = this.results;
+    el("resEmpty").hidden = list.length > 0;
+    el("resHead").hidden = list.length === 0;
+    el("resBody").hidden = list.length === 0;
+    el("resForm").innerHTML = form(list)
+      .map((x) => `<span class="o ${x}" title="${OUTCOME[x]}">${x}</span>`)
+      .join("");
+    if (!list.length) return;
+    const nums = (r: WinRecord): string =>
+      [r.p, r.w, r.d, r.l].map((n) => `<td>${n}</td>`).join("") + `<td>${gd(r)}</td>`;
+    const head = "<tr><th></th><th>P</th><th>W</th><th>D</th><th>L</th><th>GD</th></tr>";
+    el("resRec").innerHTML =
+      head +
+      recordRows(list)
+        .map((row) => `<tr><td>${esc(row.label)}</td>${nums(row.rec)}</tr>`)
+        .join("");
+    const cups = cupsWon(list);
+    el("resCups").hidden = cups === 0;
+    el("resCups").textContent = cups === 1 ? "Cups won: 1" : `Cups won: ${cups}`;
+
+    const shown = this.allResults ? list : list.slice(0, RECENT);
+    el("resList").innerHTML = shown
+      .map((r) => {
+        const x = outcome(r);
+        const score = `${esc(r.me.name)} ${r.gf}–${r.ga} ${esc(r.opp.name)}`;
+        return (
+          `<li><span class="o ${x}" title="${OUTCOME[x]}">${x}</span>` +
+          `<span class="kit" style="background:${kitCSS(makeClub(r.opp))}"></span>` +
+          `<span class="txt"><span class="sc">${score}</span>` +
+          `<span class="meta">${esc(resultMeta(r))}</span></span></li>`
+        );
+      })
+      .join("");
+    const more = el<HTMLButtonElement>("resMore");
+    more.hidden = list.length <= RECENT;
+    more.textContent = this.allResults ? "Show fewer" : `Show all ${list.length}`;
+
+    el("resH2H").innerHTML =
+      "<tr><th></th><th>P</th><th>W</th><th>D</th><th>L</th><th>GD</th></tr>" +
+      headToHead(list)
+        .map(
+          (h) =>
+            `<tr><td><span class="kit" style="background:${kitCSS(makeClub(h.opp))}"></span>` +
+            `${esc(h.opp.name)}</td>${nums(h.rec)}</tr>`,
+        )
+        .join("");
+  }
+
+  private clearResults(): void {
+    if (!confirm("Clear all your results from this device? This can't be undone.")) return;
+    this.results = [];
+    this.allResults = false;
+    store.set("results", []);
+    this.renderResults();
   }
 
   // ---------- Online (OnlineHost) ----------
@@ -449,6 +731,10 @@ export class App implements OnlineHost {
       this.renderer.resize();
     }
     this.input.clear();
+    if (this.online.role === "host") this.ticker.start();
+    else this.ticker.stop();
+    if (this.online.role) this.setMode("online");
+    else this.syncControls();
     if (this.online.guestSide) {
       this.match.halt();
       this.hideOverlays();
@@ -464,14 +750,19 @@ export class App implements OnlineHost {
     if (m.phase === "menu") {
       el("preOver").hidden = false;
       this.syncPre();
+      const guest = this.online.role === "guest";
       this.setPreKick(
         false,
-        this.online.role === "guest"
-          ? "Waiting for your friend to kick off"
-          : "Waiting for kick-off",
+        guest ? "Waiting for your friend to kick off" : "Waiting for kick-off",
+      );
+      // The host's own pre-match line ("… are here") isn't meant for this screen.
+      this.status(
+        guest
+          ? `Connected. Your ${this.online.them} kicks off when you're both ready.`
+          : "You're watching. The match starts when the host kicks off.",
       );
     } else el("preOver").hidden = true;
-    if (m.phase === "over" && prev !== "over") this.showFullTime();
+    if (m.phase === "over" && prev !== "over") this.showFullTime(prev !== "menu");
     else if (m.phase !== "over") el("ftOver").hidden = true;
     this.updateClock();
     this.online.updateCard();
@@ -482,7 +773,14 @@ export class App implements OnlineHost {
     else this.clearDirty();
   }
 
+  showOnline(): void {
+    this.setMode("online");
+    selectTab("play");
+  }
+
   playOnVsComputer(): void {
+    this.cpuFinished = true;
+    this.setMode("cpu");
     this.match.handOverToComputer(this.s.diff);
     this.match.setStatus(
       `The computer takes over ${this.match.name(1)}. Play on.`,
@@ -603,12 +901,19 @@ export class App implements OnlineHost {
     press("modeSeg", s.mode);
     press("diffSeg", String(s.diff));
     press("blockSeg", String(s.block));
-    el("diffSeg").classList.toggle("off", s.mode === "pvp");
+    el("modeHint").textContent = MODE_HINT[s.mode];
+    el("offBox").hidden = s.mode === "online";
+    el("onBox").hidden = s.mode !== "online";
+    el("diffBox").hidden = s.mode !== "cpu";
+    el("form1Box").hidden = s.mode === "online";
+    // A guest plays the host's match: only its own shape is its choice.
+    el("lenBox").hidden = el("blockBox").hidden = this.online.guestSide;
     el<HTMLSelectElement>("awaySel").value = String(s.away);
     el<HTMLSelectElement>("fmtSel").value = s.fmt;
     el("oBox").hidden = s.away !== OPP;
     this.fillForms();
-    el("snd").textContent = s.sound ? "Sound on" : "Sound off";
+    el("sndTxt").textContent = s.sound ? "Sound on" : "Sound off";
+    el("snd").setAttribute("aria-pressed", String(s.sound));
     this.syncCupBtn();
   }
 
@@ -617,6 +922,7 @@ export class App implements OnlineHost {
     if (this.online.guestSide) return;
     const m = this.match;
     if (m.phase === "menu" && !m.cfg?.cup) return this.preMatch();
+    if (this.onlineMode() && !this.online.otherPresent) return this.clearDirty();
     const b = el("startBtn");
     b.classList.add("ready");
     b.textContent = "Kick off with these settings";
@@ -625,22 +931,22 @@ export class App implements OnlineHost {
 
   private clearDirty(): void {
     const b = el<HTMLButtonElement>("startBtn");
-    if (this.online.guestSide) {
-      b.classList.remove("ready");
-      b.disabled = true;
-      b.textContent = "Host kicks off";
-      el("kickHint").textContent = "You're in your friend's online match.";
-      return;
-    }
-    b.disabled = false;
-    const pre = this.match.phase === "menu";
-    b.classList.toggle("ready", pre);
-    b.textContent = pre ? "Kick off" : "Restart match";
-    el("kickHint").textContent = pre
-      ? "The match starts when you press this."
-      : this.online.hosting
-        ? "Starts a fresh online match with your friend."
-        : "Starts a fresh friendly with the settings below.";
+    const a = this.action();
+    b.disabled = !a.go;
+    b.classList.toggle("ready", !!a.go && this.match.phase === "menu");
+    b.textContent = a.label;
+    el("kickHint").textContent = a.hint;
+    // The pre-match card carries the same action.
+    if (!el("preOver").hidden && !this.online.guestSide) this.setPreKick(!!a.go, a.label);
+  }
+
+  /** Play against: computer, same device or online. */
+  private setMode(mode: Settings["mode"]): void {
+    const s = this.s;
+    if (s.mode === mode) return this.syncControls();
+    s.mode = mode;
+    store.set("mode", mode);
+    this.syncControls();
   }
 
   private seg(id: string, apply: (v: string) => void): void {
@@ -654,10 +960,19 @@ export class App implements OnlineHost {
   }
 
   private wireControls(): void {
+    el("resClear").addEventListener("click", () => this.clearResults());
+    el("resMore").addEventListener("click", () => {
+      this.allResults = !this.allResults;
+      this.renderResults();
+    });
     const s = this.s;
     this.seg("modeSeg", (v) => {
-      s.mode = v === "pvp" ? "pvp" : "cpu";
-      store.set("mode", s.mode);
+      const mode = v === "pvp" || v === "online" ? v : "cpu";
+      if (mode !== "online" && this.online.role) {
+        if (!confirm("Leave the online match?")) return;
+        void this.online.leave();
+      }
+      this.setMode(mode);
     });
     this.seg("diffSeg", (v) => {
       s.diff = v === "0" ? 0 : v === "2" ? 2 : 1;

@@ -17,6 +17,8 @@ const KEYS = [
   "club",
   "oppClub",
   "cup",
+  "results",
+  "tab",
 ] as const;
 type Key = (typeof KEYS)[number];
 
@@ -51,7 +53,8 @@ export function migrateLegacy(): void {
 }
 
 export interface Settings {
-  mode: "cpu" | "pvp";
+  /** Who the player plays: the computer, a friend on this device, or a friend online. */
+  mode: "cpu" | "pvp" | "online";
   diff: 0 | 1 | 2;
   /** Opponents' index: an original club (0–7) or your designed opposition (OPP). */
   away: number;
@@ -69,7 +72,7 @@ export function loadSettings(): Settings {
   const diff = store.get("diff");
   const fmt = store.get("fmt");
   return {
-    mode: store.get("mode") === "pvp" ? "pvp" : "cpu",
+    mode: ((m) => (m === "pvp" || m === "online" ? m : "cpu"))(store.get("mode")),
     diff: diff === 0 || diff === 2 ? diff : 1,
     away:
       Number.isInteger(away) && (((away as number) >= 0 && (away as number) < CLUB) || away === OPP)

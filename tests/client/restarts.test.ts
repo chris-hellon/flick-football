@@ -1,5 +1,13 @@
 import { describe, expect, it } from "vitest";
-import { CX, GW, H, RB, W } from "../../src/client/src/engine/constants";
+import {
+  CX,
+  GW,
+  H,
+  KEEPER_LINE,
+  KR,
+  RB,
+  W,
+} from "../../src/client/src/engine/constants";
 import type { Match } from "../../src/client/src/rules/match";
 import { frames, harness, playerOf } from "./helpers";
 
@@ -24,8 +32,9 @@ describe("goals and restarts (home attacks the top goal in the first half)", () 
     expect(statuses.at(-1)).toMatch(/No goal/);
     frames(m, 1.5);
     expect(m.turn).toBe(1);
+    expect(m.keeperBall).toBe(1);
     expect(m.world.ball.x).toBe(CX);
-    expect(m.world.ball.y).toBe(75);
+    expect(m.world.ball.y).toBe(KEEPER_LINE + KR + RB + 2);
   });
 
   it("counts a goal struck inside the shooting area", () => {
@@ -88,7 +97,7 @@ describe("goals and restarts (home attacks the top goal in the first half)", () 
     overTopLine(m, CX + GW);
     frames(m, 1.5);
     expect(m.turn).toBe(1);
-    expect(m.world.ball.y).toBe(75);
+    expect(m.keeperBall).toBe(1);
   });
 
   it("gives a throw-in to the side that did not touch it last", () => {

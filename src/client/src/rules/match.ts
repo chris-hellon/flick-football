@@ -8,14 +8,19 @@ import {
   MAX_FLICK_TIME,
   MAXV,
   RB,
+  GOAL_AREA_D,
+  GOAL_AREA_HW,
+  KEEPER_KICK,
+  KR,
   RP,
+  RUN_OFF,
   SUBSTEPS,
   W,
   ZONE,
 } from "../engine/constants";
 import { advance, ballIsOut, moveKeeper, settled, type KeeperSkill } from "../engine/physics";
 import { createWorld, type World } from "../engine/world";
-import { inAiFrame, planAttack, planBlock } from "../ai/plan";
+import { inAiFrame, planAttack, planBlock, planKeeperKick } from "../ai/plan";
 import { aiSkill, keeperSkill } from "../ai/skill";
 import { clamp, type Rng } from "../util/math";
 import type { Club } from "./clubs";
@@ -133,6 +138,8 @@ const RESTART_MS = 1100;
 const BANNER_MS = 1700;
 const BREAK_MS = 2400;
 const REPLAY_SPEED = 0.55;
+/** Before a throw-in or corner, the taker may be moved anywhere this close to the ball. */
+export const PLACE_R = 70;
 
 export const newStats = (): Stats => ({
   goals: 0,
@@ -145,6 +152,9 @@ export const newStats = (): Stats => ({
 });
 export const halfLength = (fmt: MatchFormat): number => (fmt === "t5" ? 300 : 180);
 const DARK_RIMS = ["#151515", "#1b1b1b"];
+/** "Baize Rovers' keeper", "Harbour Albion's keeper". */
+export const possessive = (name: string): string =>
+  /s$/i.test(name.trim()) ? `${name.trim()}'` : `${name.trim()}'s`;
 
 /** One match: turns, possession, fouls, restarts, clock, ends, replays and the computer's turns. */
 export class Match {
@@ -159,6 +169,10 @@ export class Match {
   streak: { pid: number | null; count: number } = { pid: null, count: 0 };
   /** A player who has had three flicks in a row. */
   locked: number | null = null;
+  /** The throw-in or corner taker, movable until the restart is taken. */
+  placing: TeamBody | null = null;
+  /** The side whose keeper has the ball (a goal kick, or gathered in the goal area). */
+  keeperBall: Team | null = null;
   aiPlan: AiPlan | null = null;
   banner: Banner | null = null;
   floaters: Floater[] = [];
@@ -257,6 +271,8 @@ export class Match {
   /** Stops the match without a result (e.g. opening the Cup). */
   halt(): void {
     this.phase = "menu";
+    this.placing = null;
+    this.keeperBall = null;
     this.timers = [];
     this.aiPlan = null;
     this.replay = null;
@@ -311,6 +327,8 @@ export class Match {
   }
 
   setTurn(t: Team, msg: string): void {
+    this.placing = null;
+    this.keeperBall = null;
     this.turn = t;
     this.streak = { pid: null, count: 0 };
     this.locked = null;
@@ -327,14 +345,26 @@ export class Match {
   }
 
   doFlick(p: TeamBody, vx: number, vy: number, block: boolean): void {
+    this.placing = null;
+    this.keeperBall = null;
     const s = Math.hypot(vx, vy);
     if (s > MAXV) {
       vx *= MAXV / s;
       vy *= MAXV / s;
     }
-    p.vx = vx;
-    p.vy = vy;
     const { ball } = this.world;
+    const ball0 = { x: ball.x, y: ball.y };
+    const kick = p.kind === "k";
+    if (kick) {
+      // The keeper's kick: keepers stay on their rods, so the ball goes from the keeper's feet.
+      ball.vx = vx * KEEPER_KICK;
+      ball.vy = vy * KEEPER_KICK;
+      ball.last = ball.touch = p.team;
+      ball.shotOK = false;
+    } else {
+      p.vx = vx;
+      p.vy = vy;
+    }
     this.flick = {
       team: p.team,
       p,
@@ -343,8 +373,9 @@ export class Match {
       block,
       shot: false,
       onT: false,
-      ball0: { x: ball.x, y: ball.y },
+      ball0,
     };
+    if (kick) this.flick.hitBall = true;
     if (!block) this.stats[p.team].flicks++;
     this.phase = "moving";
     this.flickTime = 0;
@@ -381,6 +412,8 @@ export class Match {
       this.stats[t].fouls++;
       return this.setTurn(o, `Foul. ${N(t)} hit a player before the ball. ${N(o)} to flick.`);
     }
+    const keeper = this.gathers(f.ball0);
+    if (keeper) return this.keeperGathers(keeper.team);
     if (f.hitBall) {
       if (this.streak.pid === f.p.id) this.streak.count++;
       else this.streak = { pid: f.p.id, count: 1 };
@@ -475,8 +508,57 @@ export class Match {
     this.later(RESTART_MS, () => this.doRestart(...restart));
   }
 
+  /** The keeper whose goal area the ball has just come to rest in (it must have moved). */
+  private gathers(ball0: { x: number; y: number }): TeamBody | null {
+    const { ball, keepers } = this.world;
+    if (Math.hypot(ball.x - ball0.x, ball.y - ball0.y) < 1) return null;
+    if (Math.abs(ball.x - CX) > GOAL_AREA_HW) return null;
+    const top = ball.y <= GOAL_AREA_D;
+    if (!top && ball.y < H - GOAL_AREA_D) return null;
+    return keepers.find((k) => k.y < H / 2 === top) ?? null;
+  }
+
+  private keeperGathers(t: Team): void {
+    const k = this.world.keepers[t];
+    this.phase = "pause";
+    this.setStatus(`${possessive(this.name(t))} keeper gathers the ball.`, t);
+    this.floater("GATHERED", k.x, k.y + (k.y > H / 2 ? -40 : 40));
+    this.later(RESTART_MS, () => this.doRestart(t, CX, k.y, "gk"));
+  }
+
+  /** The keeper's kick: the ball at side t's keeper's feet, and only the keeper may kick it. */
+  private keeperRestart(t: Team): void {
+    const { ball, players } = this.world;
+    const k = this.world.keepers[t];
+    k.x = k.tx = CX;
+    k.vx = 0;
+    const out = k.y > H / 2 ? -1 : 1;
+    ball.x = CX;
+    ball.y = k.y + out * (KR + RB + 2);
+    ball.vx = ball.vy = 0;
+    ball.last = ball.touch = null;
+    ball.shotOK = false;
+    // Clear anyone standing on the ball's spot.
+    for (const q of players) {
+      const dx = q.x - ball.x;
+      const dy = q.y - ball.y;
+      const d = Math.hypot(dx, dy);
+      const min = q.r + ball.r + 6;
+      if (d < min) {
+        q.x = ball.x + (d ? dx / d : 1) * min;
+        q.y = ball.y + (d ? dy / d : out) * min;
+      }
+    }
+    this.setTurn(
+      t,
+      `${possessive(this.name(t))} keeper has the ball.${this.isHuman(t) ? " Drag back from your keeper to kick it." : ""}`,
+    );
+    this.keeperBall = t;
+  }
+
   /** Places the ball and moves the nearest player of side t behind it. */
   doRestart(t: Team, x: number, y: number, kind: RestartKind): void {
+    if (kind === "gk") return this.keeperRestart(t);
     const { ball, players } = this.world;
     ball.x = x;
     ball.y = y;
@@ -484,18 +566,10 @@ export class Match {
     ball.last = null;
     ball.touch = null;
     ball.shotOK = false;
-    let dx: number;
-    let dy: number;
-    if (kind === "gk") {
-      dx = 0;
-      dy = this.up(t) ? -1 : 1;
-    } else {
-      dx = CX - x;
-      dy = H / 2 - y;
-      const l = Math.hypot(dx, dy);
-      dx /= l;
-      dy /= l;
-    }
+    // The taker stands behind the ball, facing the middle of the pitch.
+    const l = Math.hypot(CX - x, H / 2 - y);
+    const dx = (CX - x) / l;
+    const dy = (H / 2 - y) / l;
     let taker: TeamBody | null = null;
     let best = 1e9;
     for (const p of players) {
@@ -526,7 +600,52 @@ export class Match {
         }
       }
     }
-    this.setTurn(t, `${this.name(t)} to take it.`);
+    const movable = this.isHuman(t) && !!taker;
+    this.setTurn(
+      t,
+      `${this.name(t)} to take it.${movable ? " Drag near the ball to move your taker, or flick." : ""}`,
+    );
+    if (movable) this.placing = taker;
+  }
+
+  /** Whether the side flicking now may still move its restart taker. */
+  canPlace(): boolean {
+    const tk = this.placing;
+    return (
+      !!tk && this.phase === "aim" && tk.team === this.turn && this.isHuman(this.turn) && !!this.cfg
+    );
+  }
+
+  /**
+   * Moves the restart taker towards (x, y): within PLACE_R of the ball but not on it, no further
+   * off the pitch than a player may run, and never onto another figure. Returns whether it moved.
+   */
+  placeTaker(x: number, y: number): boolean {
+    const tk = this.placing;
+    if (!tk || !this.canPlace() || !Number.isFinite(x) || !Number.isFinite(y)) return false;
+    const { ball, players, keepers } = this.world;
+    let dx = x - ball.x;
+    let dy = y - ball.y;
+    const d = Math.hypot(dx, dy);
+    const near = RP + RB + 2;
+    if (d < 1e-6) {
+      dx = 0;
+      dy = near;
+    } else {
+      const k = clamp(d, near, PLACE_R) / d;
+      dx *= k;
+      dy *= k;
+    }
+    const nx = clamp(ball.x + dx, -RUN_OFF, W + RUN_OFF);
+    const ny = clamp(ball.y + dy, -RUN_OFF, H + RUN_OFF);
+    if (Math.hypot(nx - ball.x, ny - ball.y) < near - 1e-6) return false;
+    for (const q of [...players, ...keepers] as Body[]) {
+      if (q !== tk && Math.hypot(q.x - nx, q.y - ny) < q.r + tk.r + 1) return false;
+    }
+    tk.x = nx;
+    tk.y = ny;
+    tk.vx = tk.vy = 0;
+    return true;
   }
 
   private scored(t: Team, own: boolean): void {
@@ -740,6 +859,11 @@ export class Match {
   private aiThink(): void {
     if (this.phase !== "think" || !this.cfg) return;
     const A = aiSkill(this.cfg.lvl);
+    if (this.keeperBall === 1) {
+      const kick = planKeeperKick(this.world, 1, this.up(1), A, this.rng);
+      this.aiPlan = { ...kick, t: 0, block: false };
+      return;
+    }
     const plan = inAiFrame(this.world, this.up(1), () =>
       planAttack(this.world, this.locked, A, this.rng),
     );
@@ -778,6 +902,10 @@ export class Match {
   /** The flickable player nearest a world point, if one is close enough. */
   pickPlayer(x: number, y: number): TeamBody | null {
     const a = this.actor();
+    if (this.keeperBall === a && this.phase === "aim") {
+      const k = this.world.keepers[a];
+      return Math.hypot(k.x - x, k.y - y) < KR * 2.4 ? k : null;
+    }
     let best: TeamBody | null = null;
     let bd = RP * 2.4;
     for (const p of this.world.players) {
@@ -806,6 +934,8 @@ export class Match {
   /** A human flick; ignored unless it's a legal flick right now. */
   humanFlick(p: TeamBody, vx: number, vy: number): boolean {
     if (!this.canAim() || p.team !== this.actor()) return false;
+    // While the keeper has the ball only the keeper kicks; otherwise keepers can't be flicked.
+    if ((p.kind === "k") !== (this.keeperBall === p.team && this.phase === "aim")) return false;
     if (this.phase === "aim" && p.id === this.locked) return false;
     if (!Number.isFinite(vx) || !Number.isFinite(vy) || Math.hypot(vx, vy) < 1) return false;
     this.doFlick(p, vx, vy, this.phase === "block");

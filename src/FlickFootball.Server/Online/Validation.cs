@@ -60,7 +60,8 @@ public static partial class Validation
     /// <summary>Checks a flick's numbers and clamps its speed. Turn and lock checks need the room.</summary>
     public static FlickDto? CleanFlick(FlickDto? f)
     {
-        if (f is null || f.Id is < 10 or > 19 || f.N <= 0) return null;
+        // The guest's outfield players are 10–19; its keeper (21) takes the keeper's kick.
+        if (f is null || f.Id is not ((>= 10 and <= 19) or 21) || f.N <= 0) return null;
         if (!double.IsFinite(f.Vx) || !double.IsFinite(f.Vy)) return null;
         var s = Math.Sqrt(f.Vx * f.Vx + f.Vy * f.Vy);
         if (s < 1) return null;
@@ -68,9 +69,18 @@ public static partial class Validation
         return f with { Vx = f.Vx * k, Vy = f.Vy * k, B = f.B == 1 ? 1 : 0 };
     }
 
+    /// <summary>A restart taker's new spot: a guest player, somewhere a player may stand.</summary>
+    public static PlaceDto? CleanPlace(PlaceDto? p)
+    {
+        if (p is null || p.Id is < 10 or > 19 || !double.IsFinite(p.X) || !double.IsFinite(p.Y)) return null;
+        // The pitch is 680 × 1050; players may run 34 units off it.
+        if (p.X is < -34 or > 714 || p.Y is < -34 or > 1084) return null;
+        return p;
+    }
+
     public static AimDto? CleanAim(AimDto? a)
     {
-        if (a is null || a.Id is < 0 or > 19 || !double.IsFinite(a.Vx) || !double.IsFinite(a.Vy)) return null;
+        if (a is null || a.Id is < 0 or > 21 || !double.IsFinite(a.Vx) || !double.IsFinite(a.Vy)) return null;
         return a with { B = a.B == 1 ? 1 : 0 };
     }
 }
@@ -110,4 +120,7 @@ public sealed record StateSummary(string Phase, int Turn, int? Locked)
         (Phase == "aim" && Turn == 1 && f.Id != Locked && f.B == 0) || (Phase == "block" && Turn == 0 && f.B == 1);
 
     public bool GuestMaySkip => Phase == "block" && Turn == 0;
+
+    /// <summary>Moving the taker only happens on the guest's own turn; the host checks the rest.</summary>
+    public bool GuestMayPlace => Phase == "aim" && Turn == 1;
 }
