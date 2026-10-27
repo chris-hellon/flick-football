@@ -1,7 +1,18 @@
 import { Sound } from "../audio/sound";
 import type { Team } from "../engine/body";
-import { Renderer } from "../render/renderer";
-import { CLUB, makeClub, OPP, ORIGINAL_CLUBS, type Club, type ClubData } from "../rules/clubs";
+import { playerById } from "../engine/world";
+import { FxLog } from "../net/fxLog";
+import { clubDto, type AimDto, type ClubDto } from "../net/protocol";
+import { Renderer, type ViewState } from "../render/renderer";
+import {
+  CLUB,
+  makeClub,
+  OPP,
+  ORIGINAL_CLUBS,
+  REMOTE,
+  type Club,
+  type ClubData,
+} from "../rules/clubs";
 import {
   cleanCup,
   cupLevel,
@@ -23,6 +34,7 @@ import { cupHTML } from "./cupView";
 import { el, esc } from "./dom";
 import { Input } from "./input";
 import { kitCSS } from "./kit";
+import { Online, type OnlineHost } from "./online";
 import {
   loadClub,
   loadOppClub,
@@ -40,11 +52,19 @@ const FMT_TEXT: Record<MatchFormat, string> = {
 };
 const DIFF_TEXT = ["Easy", "Medium", "Hard"] as const;
 const rng = Math.random;
+const FRIEND: ClubData = {
+  name: "Your friend",
+  code: "",
+  shirt: "#1b2f6b",
+  alt: "#f4f1e6",
+  pat: "solid",
+  base: "#1d3478",
+};
 
-/** The page: side panel, scoreboard, overlays, the Cup and the frame loop around one Match. */
-export class App {
+/** The page: side panel, scoreboard, overlays, the Cup, online play and the frame loop around one Match. */
+export class App implements OnlineHost {
   private readonly s: Settings;
-  /** Originals 0–7, your club at CLUB, your designed opposition at OPP. */
+  /** Originals 0–7, your club at CLUB, your designed opposition at OPP, an online friend at REMOTE. */
   private readonly teams: Club[];
   private readonly club: ClubData;
   private readonly oppClub: ClubData;
@@ -52,6 +72,7 @@ export class App {
   private readonly sound: Sound;
   readonly match: Match;
   readonly renderer: Renderer;
+  readonly online: Online;
   private readonly input: Input;
   private readonly mine: Builder;
   private readonly theirs: Builder;
@@ -68,22 +89,43 @@ export class App {
       ...ORIGINAL_CLUBS.map((c) => ({ ...c })),
       makeClub(this.club),
       makeClub(this.oppClub),
+      makeClub(FRIEND),
     ];
     this.cup = cleanCup(store.get("cup"), CLUB);
     this.sound = new Sound(this.s.sound);
+    const fx = new FxLog(this.sound);
     this.match = new Match(
       {
         status: (msg, team) => this.showStatus(msg, team),
-        board: () => this.updateBoard(),
+        board: () => this.board(),
         fullTime: () => this.showFullTime(),
       },
-      this.sound,
+      fx,
       [this.team(0), this.team(1)],
     );
     const cv = el<HTMLCanvasElement>("cv");
     const stage = el("stage");
     this.renderer = new Renderer(cv, stage);
-    this.input = new Input(cv, this.match, this.renderer, () => this.sound.init());
+    this.online = new Online(this, fx);
+    this.input = new Input(
+      cv,
+      {
+        phase: () => this.match.phase,
+        canAim: () => this.canAim(),
+        pickPlayer: (x, y) => this.match.pickPlayer(x, y),
+        tappedLocked: (x, y) => void this.match.tappedLocked(x, y),
+        flick: (p, vx, vy) => {
+          if (this.online.guestSide) this.online.sendFlick(p, vx, vy);
+          else this.match.humanFlick(p, vx, vy);
+        },
+        aim: (a) => this.online.sendAim(a),
+        replayTap: () => {
+          if (!this.online.guestSide) this.match.endReplay();
+        },
+      },
+      this.renderer,
+      () => this.sound.init(),
+    );
     this.mine = makeBuilder({
       prefix: "c",
       data: this.club,
@@ -108,6 +150,8 @@ export class App {
     // The pitch cache has text on it: redraw once the web fonts arrive.
     void document.fonts?.ready.then(() => this.renderer.resize());
     this.preMatch();
+    this.online.updateCard();
+    this.online.resume();
     requestAnimationFrame((t) => {
       this.last = t;
       this.frame(t);
@@ -124,15 +168,62 @@ export class App {
     return choice !== "club" && isFormation(choice) ? choice : this.team(team).form;
   }
 
+  // ---------- Who may flick ----------
+  private canAim(): boolean {
+    const m = this.match;
+    const o = this.online;
+    if (o.guestSide)
+      return (
+        o.role === "guest" &&
+        !!m.cfg &&
+        (m.phase === "aim" || m.phase === "block") &&
+        m.actor() === 1
+      );
+    if (!m.canAim()) return false;
+    // Hosting: only our side, and only while the friend is connected.
+    return m.cfg?.mode !== "online" || (m.actor() === 0 && o.otherPresent);
+  }
+
+  private skipLabel(): string | null {
+    const m = this.match;
+    const o = this.online;
+    if (o.guestSide)
+      return o.role === "guest" && m.phase === "block" && m.actor() === 1
+        ? "Skip block flick"
+        : null;
+    if (m.cfg?.mode === "online" && m.phase === "block" && m.actor() !== 0) return null;
+    return m.skipLabel();
+  }
+
+  private skip(): void {
+    if (this.online.guestSide) this.online.sendSkip();
+    else if (this.skipLabel()) this.match.skip();
+  }
+
+  /** The other player's aim preview, drawn faded. */
+  private remoteAim(): ViewState["remoteAim"] {
+    const m = this.match;
+    const o = this.online;
+    let a: AimDto | null = null;
+    if (o.guestSide && m.actor() === 0) a = o.view.hostAim;
+    else if (o.role === "host" && m.cfg?.mode === "online" && m.actor() === 1) a = o.remoteAim;
+    const p = a ? playerById(m.world, a.id) : undefined;
+    return a && p ? { p, vx: a.vx, vy: a.vy, block: a.b === 1 } : null;
+  }
+
   // ---------- Frame loop ----------
   private frame(now: number): void {
     const dt = Math.min((now - this.last) / 1000, 0.05);
     this.last = now;
-    this.match.frame(dt);
+    if (this.online.guestSide) this.online.view.frame(dt);
+    else {
+      this.match.frame(dt);
+      this.online.hostTick(now, this.input.aim());
+    }
     this.input.tick();
     this.updateClock();
     this.updateSkip();
-    this.renderer.render(this.match, this.input.view());
+    this.renderer.render(this.match, { ...this.input.view(), remoteAim: this.remoteAim() });
     requestAnimationFrame((t) => this.frame(t));
   }
 
@@ -145,7 +236,11 @@ export class App {
     el("t1").classList.toggle("on", m.actor() === 1);
   }
 
-  private updateBoard(): void {
+  status(msg: string): void {
+    this.match.setStatus(msg, 0);
+  }
+
+  board(): void {
     const m = this.match;
     for (const t of [0, 1] as const) {
       el("s" + t).textContent = String(m.score[t]);
@@ -173,7 +268,7 @@ export class App {
   }
 
   private updateSkip(): void {
-    const label = this.match.skipLabel();
+    const label = this.skipLabel();
     if (label === this.lastSkip) return;
     this.lastSkip = label;
     const b = el("skip");
@@ -196,6 +291,24 @@ export class App {
     };
   }
 
+  private onlineCfg(): MatchConfig {
+    const s = this.s;
+    return {
+      cup: false,
+      mode: "online",
+      lvl: 1,
+      home: this.team(CLUB),
+      away: this.team(REMOTE),
+      fmt: s.fmt,
+      block: !!s.block,
+      forms: [this.formFor(CLUB, s.form0), this.online.friendForm],
+    };
+  }
+
+  private cfg(): MatchConfig {
+    return this.online.hosting ? this.onlineCfg() : this.friendlyCfg();
+  }
+
   private hideOverlays(): void {
     el("ftOver").hidden = true;
     el("cupOver").hidden = true;
@@ -206,24 +319,42 @@ export class App {
     this.hideOverlays();
     this.input.clear();
     this.sound.init();
+    this.online.fx.entries = [];
     this.match.start(cfg);
     this.updateClock();
     this.clearDirty();
+    this.online.updateCard();
   }
 
   private startFriendly(): void {
-    this.begin(this.friendlyCfg());
+    if (this.online.guestSide) return;
+    this.begin(this.cfg());
   }
 
   /** Lines the teams up on the pre-match card: nothing runs until Kick off. */
   private preMatch(): void {
+    if (this.online.guestSide) return;
     this.input.clear();
-    this.match.preMatch(this.friendlyCfg());
+    const cfg = this.cfg();
+    const msg = this.online.hosting
+      ? `${cfg.away.name} are here. Press Kick off when you're both ready.`
+      : this.online.role === "host"
+        ? "Waiting for your friend to join. You can still change your club."
+        : undefined;
+    this.match.preMatch(cfg, msg);
     this.updateClock();
     this.syncPre();
     this.hideOverlays();
     el("preOver").hidden = false;
+    this.setPreKick(true, "Kick off");
     this.clearDirty();
+    this.online.updateCard();
+  }
+
+  private setPreKick(enabled: boolean, label: string): void {
+    const b = el<HTMLButtonElement>("preKick");
+    b.disabled = !enabled;
+    b.textContent = label;
   }
 
   private syncPre(): void {
@@ -234,7 +365,12 @@ export class App {
       el("preName" + t).textContent = m.kits[t].name;
       el("preKit" + t).style.background = kitCSS(m.kits[t]);
     }
-    const who = cfg.mode === "pvp" ? "Two players" : `${DIFF_TEXT[this.s.diff]} computer`;
+    const who =
+      cfg.mode === "online"
+        ? "Online friendly"
+        : cfg.mode === "pvp"
+          ? "Two players"
+          : `${DIFF_TEXT[this.s.diff]} computer`;
     el("preInfo").textContent = `${FMT_TEXT[cfg.fmt]} · ${who} · ${cfg.forms[0]} v ${cfg.forms[1]}`;
   }
 
@@ -268,18 +404,96 @@ export class App {
     el("ftStats").innerHTML =
       `<tr><td>${esc(m.kits[0].code)}</td><td></td><td>${esc(m.kits[1].code)}</td></tr>` +
       rows.map((r) => `<tr><td>${r[1]}</td><td>${r[0]}</td><td>${r[2]}</td></tr>`).join("");
+    const ftNext = el("ftNext");
     if (cfg.cup && this.cup) {
       recordResult(this.cup, m.score[0], m.score[1], m.half === "gg", this.teams, rng);
       store.set("cup", this.cup);
       this.syncCupBtn();
-      el("ftNext").textContent = "Back to the Cup";
-    } else el("ftNext").textContent = "Play again";
+      ftNext.textContent = "Back to the Cup";
+    } else if (this.online.guestSide) ftNext.textContent = "Leave online match";
+    else if (cfg.mode === "online") ftNext.textContent = "Rematch";
+    else ftNext.textContent = "Play again";
     el("ftOver").hidden = false;
-    m.setStatus(`Full time. ${N(0)} ${m.score[0]}, ${N(1)} ${m.score[1]}.`, w ?? 0);
+    if (!this.online.guestSide)
+      m.setStatus(`Full time. ${N(0)} ${m.score[0]}, ${N(1)} ${m.score[1]}.`, w ?? 0);
+  }
+
+  // ---------- Online (OnlineHost) ----------
+  myClub(): ClubDto {
+    return clubDto(this.club);
+  }
+
+  myForm(): FormationName {
+    return this.formFor(CLUB, this.s.form0);
+  }
+
+  setFriendClub(club: ClubData): void {
+    Object.assign(this.team(REMOTE), makeClub(club));
+    if (this.match.cfg?.away === this.team(REMOTE)) this.board();
+  }
+
+  refreshPreMatch(force = false): void {
+    if (force || (this.match.phase === "menu" && el("cupOver").hidden)) this.preMatch();
+  }
+
+  showPitch(): void {
+    const r = el("stage").getBoundingClientRect();
+    if (r.top < 0 || r.top > innerHeight / 2)
+      el("stage").scrollIntoView({ block: "start", behavior: "smooth" });
+  }
+
+  seatChanged(): void {
+    const flip = this.online.role === "guest";
+    if (this.renderer.flip !== flip) {
+      this.renderer.flip = flip;
+      this.renderer.resize();
+    }
+    this.input.clear();
+    if (this.online.guestSide) {
+      this.match.halt();
+      this.hideOverlays();
+      el("preOver").hidden = false;
+      this.setPreKick(false, "Connecting…");
+    }
+    this.clearDirty();
+  }
+
+  /** A snapshot arrived: follow the host's overlays. */
+  showState(prev: string): void {
+    const m = this.match;
+    if (m.phase === "menu") {
+      el("preOver").hidden = false;
+      this.syncPre();
+      this.setPreKick(
+        false,
+        this.online.role === "guest"
+          ? "Waiting for your friend to kick off"
+          : "Waiting for kick-off",
+      );
+    } else el("preOver").hidden = true;
+    if (m.phase === "over" && prev !== "over") this.showFullTime();
+    else if (m.phase !== "over") el("ftOver").hidden = true;
+    this.updateClock();
+    this.online.updateCard();
+  }
+
+  ended(keepMatch: boolean): void {
+    if (!keepMatch) this.preMatch();
+    else this.clearDirty();
+  }
+
+  playOnVsComputer(): void {
+    this.match.handOverToComputer(this.s.diff);
+    this.match.setStatus(
+      `The computer takes over ${this.match.name(1)}. Play on.`,
+      this.match.turn,
+    );
+    void this.online.leave(true);
   }
 
   // ---------- Cup ----------
   private openCup(): void {
+    if (this.online.role) void this.online.leave(true);
     this.cup ??= newCup(CLUB, rng);
     store.set("cup", this.cup);
     this.match.halt();
@@ -351,10 +565,11 @@ export class App {
       const o = [...el<HTMLSelectElement>("awaySel").options].find((x) => Number(x.value) === OPP);
       if (o) o.textContent = `${this.team(OPP).name} (your design)`;
     }
+    if (idx === CLUB) this.online.clubChanged();
     const cfg = this.match.cfg;
     const club = this.team(idx);
-    if (cfg && (cfg.home === club || cfg.away === club)) {
-      this.updateBoard();
+    if (!this.online.guestSide && cfg && (cfg.home === club || cfg.away === club)) {
+      this.board();
       if (this.match.phase === "menu") this.syncPre();
     }
     if (!el("cupOver").hidden && this.cup) this.renderCup();
@@ -399,6 +614,7 @@ export class App {
 
   /** Settings only take effect at kick-off, so the button says so when they've changed. */
   private markDirty(): void {
+    if (this.online.guestSide) return;
     const m = this.match;
     if (m.phase === "menu" && !m.cfg?.cup) return this.preMatch();
     const b = el("startBtn");
@@ -409,13 +625,22 @@ export class App {
 
   private clearDirty(): void {
     const b = el<HTMLButtonElement>("startBtn");
+    if (this.online.guestSide) {
+      b.classList.remove("ready");
+      b.disabled = true;
+      b.textContent = "Host kicks off";
+      el("kickHint").textContent = "You're in your friend's online match.";
+      return;
+    }
     b.disabled = false;
     const pre = this.match.phase === "menu";
     b.classList.toggle("ready", pre);
     b.textContent = pre ? "Kick off" : "Restart match";
     el("kickHint").textContent = pre
       ? "The match starts when you press this."
-      : "Starts a fresh friendly with the settings below.";
+      : this.online.hosting
+        ? "Starts a fresh online match with your friend."
+        : "Starts a fresh friendly with the settings below.";
   }
 
   private seg(id: string, apply: (v: string) => void): void {
@@ -471,6 +696,7 @@ export class App {
         const v = (e.target as HTMLSelectElement).value;
         s[key] = isFormation(v) ? v : "club";
         store.set(key, s[key]);
+        if (key === "form0") this.online.clubChanged();
         this.markDirty();
       });
     }
@@ -478,7 +704,8 @@ export class App {
     el("preKick").addEventListener("click", () => this.startFriendly());
     el("cupBtn").addEventListener("click", () => this.openCup());
     el("ftNext").addEventListener("click", () => {
-      if (this.match.cfg?.cup && this.cup) this.openCup();
+      if (this.online.guestSide) void this.online.leave();
+      else if (this.match.cfg?.cup && this.cup) this.openCup();
       else this.startFriendly();
     });
     el("snd").addEventListener("click", () => {
@@ -490,7 +717,7 @@ export class App {
       this.sound.crowd(s.sound && !!this.match.cfg && ph !== "over" && ph !== "menu");
       this.syncControls();
     });
-    el("skip").addEventListener("click", () => this.match.skip());
+    el("skip").addEventListener("click", () => this.skip());
     document.addEventListener("keydown", (e) => {
       if (
         (e.key === " " || e.key === "Enter") &&
@@ -498,7 +725,7 @@ export class App {
         document.activeElement === document.body
       ) {
         e.preventDefault();
-        this.match.skip();
+        this.skip();
       }
     });
   }

@@ -10,8 +10,10 @@ droplet at no extra cost.
 - **Phase 1 done:** the game is ported to TypeScript in `src/client` (engine, rules, computer
   opponent, renderer, sound, club builder, Cup) and plays the same as the prototype offline:
   friendlies against the computer or a friend on one device, and the Cup.
-- Next: online matches over SignalR (Phase 2), then deploying to the droplet (Phase 3).
-  `docs/BUILD_PLAN.md` has the plan.
+- **Phase 2 done:** online matches against a friend over SignalR. Create a match, send the code or
+  the `/m/CODE` link, and the friend joins with no account. Extra joiners watch. A refresh or a
+  dropped connection takes the same seat back.
+- Next: deploying to the droplet (Phase 3). `docs/BUILD_PLAN.md` has the plan.
 - `prototype/flick-football.html` is the original single-file version, kept as the reference for
   behaviour and feel. (Its online mode depends on claude.ai and is being replaced.)
 
@@ -27,7 +29,7 @@ npm run dev
 ```
 
 ```bash
-# server (http://localhost:5080): serves the built client and, from Phase 2, /hubs/match
+# server (http://localhost:5080): serves the built client and the /hubs/match online hub
 dotnet run --project src/FlickFootball.Server
 ```
 
@@ -44,6 +46,9 @@ From the repo root, `dotnet test` runs the server tests (xUnit).
 
 In development builds the app is on `window.flick` for poking at from the browser console
 (`flick.match.phase`, `flick.match.world.ball`, and so on).
+
+Online play needs both running: the Vite dev server forwards `/hubs` to the .NET server. To try it
+on one machine, create a match in one browser window and join from a private window.
 
 To see the production setup locally, run `npm run build` and then `dotnet run`: the server serves
 the built page at http://localhost:5080.

@@ -757,6 +757,17 @@ export class Match {
     this.aiPlan = { ...plan, t: 0, block: true };
   }
 
+  /** The away side's player has gone (online): the computer takes over that side from here. */
+  handOverToComputer(lvl: number): void {
+    if (!this.cfg) return;
+    this.cfg = { ...this.cfg, mode: "cpu", lvl };
+    if (this.phase === "aim" && this.turn === 1) this.maybeAI();
+    else if (this.phase === "block" && this.actor() === 1) {
+      this.phase = "blockthink";
+      this.later(AI_BLOCK_MS, () => this.aiBlock());
+    }
+  }
+
   // ---------- Human input ----------
   canAim(): boolean {
     return (

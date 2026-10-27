@@ -81,6 +81,44 @@
             <p class="hint">You play as this club in every match. Edit it any time.</p>
             <div class="builder" id="cBuild"></div>
           </section>
+          <section class="card" id="onlineCard">
+            <h2>Play a friend online</h2>
+            <div class="group" id="onIdle">
+              <p class="hint">
+                You each play as your own club, on your own device. Create a match and send your
+                friend the code or the link. Nothing to sign up for.
+              </p>
+              <button type="button" class="btn amber" id="onCreate">Create a match</button>
+              <label class="label" for="onCode">Or join your friend's match</label>
+              <div class="row">
+                <input
+                  class="txt code"
+                  id="onCode"
+                  maxlength="5"
+                  placeholder="Code"
+                  autocomplete="off"
+                  autocapitalize="characters"
+                  spellcheck="false"
+                />
+                <button type="button" class="btn" id="onJoin">Join</button>
+              </div>
+            </div>
+            <div class="group" id="onLive" hidden>
+              <span class="label">Match code</span>
+              <span class="bigcode" id="onShowCode"></span>
+              <div class="row">
+                <button type="button" class="btn ghost" id="onCopy">Copy code</button>
+                <button type="button" class="btn ghost" id="onShare">Share link</button>
+              </div>
+              <p class="hint" id="onMsg"></p>
+              <div class="row" id="onDropped" hidden>
+                <button type="button" class="btn amber" id="onPlayOn">Play on vs computer</button>
+                <button type="button" class="btn ghost" id="onEnd">End match</button>
+              </div>
+              <button type="button" class="btn ghost" id="onLeave">Leave online match</button>
+            </div>
+            <p class="hint warn" id="onErr" hidden></p>
+          </section>
           <section class="card">
             <h2>Friendly setup</h2>
             <div class="group">

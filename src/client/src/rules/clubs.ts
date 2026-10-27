@@ -153,6 +153,8 @@ export const ORIGINAL_CLUBS: readonly Club[] = [
 export const CLUB = 8;
 /** Index of the custom opposition the player can design. */
 export const OPP = 9;
+/** Index of an online friend's club (as the host sees it). */
+export const REMOTE = 10;
 
 export const DEFAULT_CLUB: ClubData = {
   name: "Baize Rovers",

@@ -28,11 +28,14 @@ Model in the prototype, kept for v1:
 - Match code: 5 characters from `ABCDEFGHJKLMNPQRSTUVWXYZ23456789` (no 0/O/1/I). Case-insensitive on input.
 - Join link: `https://<site>/m/ABCDE` opens the page with the code filled in and joins on tap
   (server fallback route serves `index.html` for `/m/{code}`).
-- In-memory registry (`ConcurrentDictionary<string, Room>`). A hosted service closes rooms 2
-  minutes after the host leaves, or after 3 hours in total.
+- In-memory registry (`Online/RoomRegistry.cs`, one lock around plain dictionaries; traffic is
+  tiny). A hosted service runs every 30 s and closes rooms 2 minutes after the host drops, or after
+  3 hours in total. The registry returns the messages to send instead of sending them, so it is
+  unit-tested without SignalR.
 - Seats: `host` (home, team 0), `guest` (away, team 1), then up to 8 `spectator`s.
-- Each seat gets a random **rejoin token** (kept in sessionStorage). Reconnecting with the token
-  takes the same seat back, even with a new connection id.
+- Each seat gets a random **rejoin token** (kept in sessionStorage as `ff_online`). Reconnecting
+  with the token takes the same seat back, even with a new connection id. A dropped guest's seat is
+  held for 2 minutes; after that someone else can take it.
 - The room keeps the latest snapshot and both clubs, so a reconnecting guest or a new spectator
   sees the pitch at once.
 
@@ -43,19 +46,20 @@ Client to server:
 | Method | Who | Payload | Effect |
 | --- | --- | --- | --- |
 | `CreateMatch(club, form)` | anyone | `ClubDto`, formation | Creates a room. Returns `{ code, seat: "host", token }`. |
-| `JoinMatch(code, club, form, token?)` | anyone | | Returns `{ seat, token, otherClub, lastState }`. Tells the host `GuestJoined(club, form)`. |
+| `JoinMatch(code, club, form, token?)` | anyone | | Returns `{ ok, error, code, seat, token, otherClub, otherForm, otherPresent, lastState }`. Tells the host `GuestJoined(club, form)`. |
 | `UpdateClub(club, form)` | host, guest | | Relayed to the other player (pre-match card updates live). |
 | `PublishState(state)` | host | `StateDto` | Stored as latest; relayed to the guest and spectators. Dropped if over 8 KB. |
 | `SendFlick(flick)` | guest | `{ n, id, vx, vy, b }` | Relayed to the host only. |
-| `SendAim(aim?)` | host, guest | `{ id, vx, vy, b }` or null | Relayed to the other player. |
+| `SendAim(aim?)` | host, guest | `{ id, vx, vy, b }` or null | Relayed to the other player. (The client's host sends its aim inside the snapshot's `am` instead.) |
 | `SendSkip(n)` | guest | sequence number | Relayed to the host. |
 | `Leave()` | any | | Frees the seat; tells the others. |
 
 Server to client: `GuestJoined`, `GuestLeft`, `HostLeft`, `HostReturned`, `ClubUpdated`, `State`,
 `Flick`, `Aim`, `Skip`, `RoomClosed(reason)`.
 
-Groups: `room:{code}` (everyone) and `room:{code}:host`. Track connection → seat in the registry,
-and handle `OnDisconnectedAsync` to mark seats empty (not removed) until the token expires.
+Recipients come from the registry's connection → seat map rather than SignalR groups, so a seat
+taken back on a new connection needs no group bookkeeping. `OnDisconnectedAsync` marks seats empty
+(not removed) until the grace period ends. Calls return `ok`/`error` results rather than throwing.
 
 ## DTOs
 
@@ -104,9 +108,14 @@ Treat everything from a peer as untrusted:
   clamped to 1500. Applied only when it is the guest's turn (or their block flick). Sequence
   numbers must increase.
 - Snapshot arrays checked for length and finite numbers before use; unknown phases fall back to "pause".
-- Server: `MaximumReceiveMessageSize` 8 KB; per-connection rate limits (host `PublishState` 20/s,
-  others 15/s; disconnect on abuse); max 10 rooms per IP; max 500 rooms and 2,000 connections in
-  total; ASP.NET Core rate limiting on `/hubs/match` negotiation.
+- Server: snapshots over 8 KB of JSON are dropped; `MaximumReceiveMessageSize` is 10 KB so the
+  envelope fits (SignalR closes the connection on anything bigger). Per-connection rate limits
+  (host `PublishState` 20/s, others 15/s; up to 3× is dropped, beyond that the connection is
+  closed); max 10 rooms per IP; max 500 rooms and 2,000 connections in total; ASP.NET Core rate
+  limiting on `/hubs/match/negotiate` only (30 a minute per IP), because long polling makes a
+  request per poll. All limits are in `MatchOptions` and can be set from the `Match` config section.
+- The server also checks guest flicks against the last snapshot (whose turn, phase, locked player)
+  before relaying them, and requires increasing sequence numbers for flicks and skips.
 
 ## Reconnects and leaving
 
