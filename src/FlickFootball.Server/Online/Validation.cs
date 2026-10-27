@@ -72,7 +72,8 @@ public static partial class Validation
     /// <summary>A restart taker's new spot: a guest player, somewhere a player may stand.</summary>
     public static PlaceDto? CleanPlace(PlaceDto? p)
     {
-        if (p is null || p.Id is < 10 or > 19 || !double.IsFinite(p.X) || !double.IsFinite(p.Y)) return null;
+        // One of the guest's players (10–19), or its keeper (21) before the keeper's kick.
+        if (p is null || (p.Id is < 10 or > 19 && p.Id != 21) || !double.IsFinite(p.X) || !double.IsFinite(p.Y)) return null;
         // The pitch is 680 × 1050; players may run 34 units off it.
         if (p.X is < -34 or > 714 || p.Y is < -34 or > 1084) return null;
         return p;

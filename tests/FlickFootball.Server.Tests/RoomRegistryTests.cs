@@ -231,6 +231,8 @@ public sealed class RoomRegistryTests
         Assert.Equal(["host"], n.To);
         Assert.Empty(_rooms.Place("spec", new PlaceDto(14, 10, 300)));
         Assert.Empty(_rooms.Place("guest", new PlaceDto(4, 10, 300))); // the host's player
+        Assert.Single(_rooms.Place("guest", new PlaceDto(21, 340, 1040))); // its own keeper, before the keeper's kick
+        Assert.Empty(_rooms.Place("guest", new PlaceDto(20, 340, 10))); // the host's keeper
         Assert.Empty(_rooms.Place("guest", new PlaceDto(14, double.NaN, 300)));
         Assert.Empty(_rooms.Place("guest", new PlaceDto(14, -500, 300))); // nowhere a player can stand
 

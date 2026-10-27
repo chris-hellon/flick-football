@@ -140,6 +140,8 @@ const BREAK_MS = 2400;
 const REPLAY_SPEED = 0.55;
 /** Before a throw-in or corner, the taker may be moved anywhere this close to the ball. */
 export const PLACE_R = 70;
+/** How fast a keeper walks back onto its line after its kick (units a second). */
+const KEEPER_RETURN = 160;
 
 export const newStats = (): Stats => ({
   goals: 0,
@@ -526,15 +528,19 @@ export class Match {
     this.later(RESTART_MS, () => this.doRestart(t, CX, k.y, "gk"));
   }
 
-  /** The keeper's kick: the ball at side t's keeper's feet, and only the keeper may kick it. */
+  /**
+   * The keeper's kick: the ball on the front edge of side t's goal area, the keeper on its line
+   * behind it, and only the keeper may kick it. A human side may first move its keeper.
+   */
   private keeperRestart(t: Team): void {
     const { ball, players } = this.world;
     const k = this.world.keepers[t];
     k.x = k.tx = CX;
-    k.vx = 0;
+    k.vx = k.vy = 0;
+    k.y = this.keeperLine(t);
     const out = k.y > H / 2 ? -1 : 1;
     ball.x = CX;
-    ball.y = k.y + out * (KR + RB + 2);
+    ball.y = (out > 0 ? 0 : H) + out * (GOAL_AREA_D - RB - 2);
     ball.vx = ball.vy = 0;
     ball.last = ball.touch = null;
     ball.shotOK = false;
@@ -551,9 +557,15 @@ export class Match {
     }
     this.setTurn(
       t,
-      `${possessive(this.name(t))} keeper has the ball.${this.isHuman(t) ? " Drag back from your keeper to kick it." : ""}`,
+      `${possessive(this.name(t))} keeper has the ball.${this.isHuman(t) ? " Drag near the ball to move your keeper, or drag back from your keeper to kick it." : ""}`,
     );
     this.keeperBall = t;
+    if (this.isHuman(t)) this.placing = k;
+  }
+
+  /** The y of side t's keeper's line. */
+  private keeperLine(t: Team): number {
+    return this.up(t) ? H - KEEPER_LINE : KEEPER_LINE;
   }
 
   /** Places the ball and moves the nearest player of side t behind it. */
@@ -618,7 +630,8 @@ export class Match {
 
   /**
    * Moves the restart taker towards (x, y): within PLACE_R of the ball but not on it, no further
-   * off the pitch than a player may run, and never onto another figure. Returns whether it moved.
+   * off the pitch than a player may run, and never onto another figure. A keeper taking its kick
+   * stays on the pitch and on its own goal's side of the ball. Returns whether it moved.
    */
   placeTaker(x: number, y: number): boolean {
     const tk = this.placing;
@@ -627,7 +640,7 @@ export class Match {
     let dx = x - ball.x;
     let dy = y - ball.y;
     const d = Math.hypot(dx, dy);
-    const near = RP + RB + 2;
+    const near = tk.r + RB + 2;
     if (d < 1e-6) {
       dx = 0;
       dy = near;
@@ -636,8 +649,12 @@ export class Match {
       dx *= k;
       dy *= k;
     }
-    const nx = clamp(ball.x + dx, -RUN_OFF, W + RUN_OFF);
-    const ny = clamp(ball.y + dy, -RUN_OFF, H + RUN_OFF);
+    let nx = clamp(ball.x + dx, -RUN_OFF, W + RUN_OFF);
+    let ny = clamp(ball.y + dy, -RUN_OFF, H + RUN_OFF);
+    if (tk.kind === "k") {
+      nx = clamp(nx, tk.r, W - tk.r);
+      ny = tk.y < H / 2 ? clamp(ny, 0, ball.y) : clamp(ny, ball.y, H);
+    }
     if (Math.hypot(nx - ball.x, ny - ball.y) < near - 1e-6) return false;
     for (const q of [...players, ...keepers] as Body[]) {
       if (q !== tk && Math.hypot(q.x - nx, q.y - ny) < q.r + tk.r + 1) return false;
@@ -804,8 +821,14 @@ export class Match {
   step(dt: number): void {
     const { phase, world } = this;
     if (phase === "replay" || phase === "menu" || phase === "over") return;
-    for (const k of world.keepers)
+    for (const k of world.keepers) {
+      // A keeper waiting to take its kick stays where it was put.
+      if (this.keeperBall === k.team && phase === "aim") continue;
+      // After its kick, a keeper walks back onto its line.
+      const line = this.keeperLine(k.team);
+      if (k.y !== line) k.y += clamp(line - k.y, -KEEPER_RETURN * dt, KEEPER_RETURN * dt);
       moveKeeper(k, world.ball, this.keeperSkillFor(k.team), dt, this.rng);
+    }
     if (phase !== "moving") return;
     advance(world, dt, this.onContact);
     if (ballIsOut(world.ball)) {

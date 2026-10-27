@@ -8,10 +8,23 @@ import { drawPitch, makeNoise, upright } from "./pitch";
 
 export interface Drag {
   p: TeamBody;
+  /** Where the press started, in world units. */
+  sx: number;
+  sy: number;
   /** Pointer position in world units. */
   x: number;
   y: number;
   block: boolean;
+}
+
+/**
+ * The pull of a drag: from where the press started back to the pointer, so a tiny pull is a
+ * tiny flick wherever on the player you pressed. The flick goes the opposite way.
+ */
+export function pull(drag: Drag): { dx: number; dy: number; d: number } {
+  const dx = drag.sx - drag.x;
+  const dy = drag.sy - drag.y;
+  return { dx, dy, d: Math.hypot(dx, dy) };
 }
 
 export interface ViewState {
@@ -150,9 +163,7 @@ export class Renderer {
     const drag = vs.drag;
     if (drag) {
       const p = drag.p;
-      const dx = p.x - drag.x;
-      const dy = p.y - drag.y;
-      const d = Math.hypot(dx, dy);
+      const { dx, dy, d } = pull(drag);
       if (d > 4) {
         const v = launchSpeed(d);
         const cd = Math.min(d, MAXDRAG);

@@ -1,4 +1,4 @@
-import { playerById } from "../engine/world";
+import { figureById } from "../engine/world";
 import { makeClub } from "../rules/clubs";
 import type { Fx, Match, Phase } from "../rules/match";
 import { clamp } from "../util/math";
@@ -62,7 +62,7 @@ export class GuestView {
     m.turn = s.tn;
     m.swapped = s.sw;
     m.locked = s.lk;
-    m.placing = s.pt === null ? null : (playerById(m.world, s.pt) ?? null);
+    m.placing = s.pt === null ? null : (figureById(m.world, s.pt) ?? null);
     m.keeperBall = s.kb;
     if (s.sc[0] !== m.score[0] || s.sc[1] !== m.score[1]) {
       m.score = [s.sc[0], s.sc[1]];

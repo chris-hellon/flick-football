@@ -56,7 +56,7 @@ Client to server:
 | `SendFlick(flick)` | guest | `{ n, id, vx, vy, b }` | Relayed to the host only. |
 | `SendAim(aim?)` | host, guest | `{ id, vx, vy, b }` or null | Relayed to the other player. (The client's host sends its aim inside the snapshot's `am` instead.) |
 | `SendSkip(n)` | guest | sequence number | Relayed to the host. |
-| `SendPlace(place)` | guest | `{ id, x, y }` | Moves the guest's throw-in or corner taker. Relayed to the host only on the guest's turn; the host checks it's the current taker and applies the same limits as offline. At most 10 a second while dragging, plus the final spot. |
+| `SendPlace(place)` | guest | `{ id, x, y }` | Moves the guest's throw-in or corner taker (10–19), or its keeper (21) before the keeper's kick. Relayed to the host only on the guest's turn; the host checks it's the current taker and applies the same limits as offline. At most 10 a second while dragging, plus the final spot. |
 | `Leave()` | any | | Frees the seat; tells the others. |
 
 Server to client: `GuestJoined`, `GuestLeft`, `HostLeft`, `HostReturned`, `ClubUpdated`, `State`,
@@ -75,7 +75,7 @@ type ClubDto = { name: string; code: string; shirt: string; alt: string; base: s
 type StateDto = {
   ph: "menu"|"aim"|"think"|"moving"|"block"|"blockthink"|"pause"|"replay"|"over";
   tn: 0|1; lk: number|null;           // turn, locked player id
-  pt: number|null;                    // restart taker that can still be moved
+  pt: number|null;                    // restart taker (or keeper, 20–21) that can still be moved
   kb: 0|1|null;                       // side whose keeper has the ball (keeper's kick)
   sc: [number, number]; hf: 1|2|"gg"; cl: number;   // score, half, seconds left
   fmt: "t3"|"t5"|"g3"|"g5"; bl: 0|1; fo: [string, string]; sw: 0|1;

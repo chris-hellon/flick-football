@@ -1,7 +1,7 @@
 import { launchSpeed, MIN_DRAG } from "../engine/constants";
 import type { TeamBody } from "../engine/body";
 import type { AimDto } from "../net/protocol";
-import type { Drag, Renderer, ViewState } from "../render/renderer";
+import { pull, type Drag, type Renderer, type ViewState } from "../render/renderer";
 import type { Phase } from "../rules/match";
 
 /** What the pointer may do right now; the app decides (offline, hosting or guest). */
@@ -49,7 +49,7 @@ export class Input {
         return;
       }
       if (!p) return controls.tappedLocked(w.x, w.y);
-      this.drag = { p, x: w.x, y: w.y, block: controls.phase() === "block" };
+      this.drag = { p, sx: w.x, sy: w.y, x: w.x, y: w.y, block: controls.phase() === "block" };
       cv.setPointerCapture(e.pointerId);
       e.preventDefault();
     });
@@ -92,9 +92,7 @@ export class Input {
   aim(): AimDto | null {
     const drag = this.drag;
     if (!drag) return null;
-    const dx = drag.p.x - drag.x;
-    const dy = drag.p.y - drag.y;
-    const d = Math.hypot(dx, dy);
+    const { dx, dy, d } = pull(drag);
     if (d < 4) return null;
     const v = launchSpeed(d);
     return {
@@ -111,9 +109,7 @@ export class Input {
     this.drag = null;
     this.controls.aim(null);
     const p = drag.p;
-    const dx = p.x - drag.x;
-    const dy = p.y - drag.y;
-    const d = Math.hypot(dx, dy);
+    const { dx, dy, d } = pull(drag);
     if (cancel || d < MIN_DRAG) return;
     const v = launchSpeed(d);
     this.controls.flick(p, (dx / d) * v, (dy / d) * v);

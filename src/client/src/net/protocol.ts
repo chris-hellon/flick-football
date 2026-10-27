@@ -117,8 +117,10 @@ export function cleanAim(a: unknown): AimDto | null {
 
 /** A guest's taker move as the host receives it: one of the guest's players, finite numbers. */
 export function cleanPlace(p: unknown): PlaceDto | null {
-  if (!obj(p) || !int(p.id, 10, 19) || !num(p.x) || !num(p.y)) return null;
-  return { id: p.id, x: p.x, y: p.y };
+  if (!obj(p) || !num(p.x) || !num(p.y)) return null;
+  const id = p.id;
+  if (!int(id, 10, 19) && id !== 21) return null;
+  return { id: id as number, x: p.x, y: p.y };
 }
 
 /** A guest's flick as the host receives it: one of the guest's players or its keeper (21). */
@@ -173,7 +175,7 @@ export function cleanState(raw: unknown): GuestState | null {
     ph: PHASES.includes(s.ph as Phase) ? (s.ph as Phase) : "pause",
     tn: s.tn === 1 ? 1 : 0,
     lk: int(s.lk, 0, 19) ? s.lk : null,
-    pt: int(s.pt, 0, 19) ? s.pt : null,
+    pt: int(s.pt, 0, 21) ? s.pt : null,
     kb: s.kb === 0 || s.kb === 1 ? s.kb : null,
     sc: [int(sc[0], 0, 999) ? sc[0] : 0, int(sc[1], 0, 999) ? sc[1] : 0],
     hf: s.hf === "gg" ? "gg" : s.hf === 2 ? 2 : 1,

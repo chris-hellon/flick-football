@@ -80,9 +80,9 @@ describe("moving the restart taker", () => {
     expect(m.placeTaker(-10, 40)).toBe(true);
   });
 
-  it("isn't offered for goal kicks", () => {
+  it("moves the keeper, not an outfield player, for goal kicks", () => {
     const { m } = harness();
     m.doRestart(1, 340, 75, "gk");
-    expect(m.canPlace()).toBe(false);
+    expect(m.placing).toBe(m.world.keepers[1]);
   });
 });

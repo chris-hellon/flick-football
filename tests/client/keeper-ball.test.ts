@@ -18,9 +18,9 @@ describe("the keeper's ball (home attacks the top goal in the first half)", () =
     const k = m.world.keepers[1];
     const { ball } = m.world;
     expect(m.keeperBall).toBe(1);
-    expect(ball.y).toBe(KEEPER_LINE + KR + RB + 2);
+    expect(ball.y).toBe(GOAL_AREA_D - RB - 2); // the front edge of the goal area
     expect(statuses.at(-1)).toMatch(
-      /keeper has the ball\. Drag back from your keeper/,
+      /keeper has the ball\. Drag near the ball to move your keeper, or drag back from your keeper/,
     );
     expect(m.pickPlayer(k.x, k.y)).toBe(k);
     const outfield = playerOf(m, 1, 5);
@@ -29,10 +29,53 @@ describe("the keeper's ball (home attacks the top goal in the first half)", () =
 
     expect(m.humanFlick(k, 0, 600)).toBe(true);
     expect(ball.vy).toBeCloseTo(600 * KEEPER_KICK);
-    expect(k.y).toBe(KEEPER_LINE); // keepers stay on their rods
+    expect(k.y).toBe(KEEPER_LINE);
     expect(m.keeperBall).toBeNull();
     settle(m);
     expect(m.turn).toBe(1); // the kick counts as a touch: away keep the ball
+  });
+
+  it("lets a human side move its keeper behind the ball before the kick", () => {
+    const { m } = harness();
+    m.doRestart(1, CX, 75, "gk");
+    const k = m.world.keepers[1];
+    const { ball } = m.world;
+    expect(m.placing).toBe(k);
+    expect(m.canPlace()).toBe(true);
+
+    // Back and to one side of the ball: allowed, and it stays there while aiming.
+    expect(m.placeTaker(ball.x - 50, ball.y - 20)).toBe(true);
+    expect(k.x).toBeCloseTo(ball.x - 50);
+    expect(k.y).toBeCloseTo(ball.y - 20);
+    frames(m, 1);
+    expect(k.x).toBeCloseTo(ball.x - 50);
+    expect(k.y).toBeCloseTo(ball.y - 20);
+
+    // Never upfield of the ball, behind the end line or onto the ball.
+    m.placeTaker(ball.x, ball.y + 60);
+    expect(k.y).toBeLessThanOrEqual(ball.y);
+    m.placeTaker(ball.x, -40);
+    expect(k.y).toBeGreaterThanOrEqual(0);
+    m.placeTaker(ball.x + 1, ball.y);
+    expect(Math.hypot(k.x - ball.x, k.y - ball.y)).toBeGreaterThanOrEqual(
+      KR + RB + 2 - 1e-6,
+    );
+
+    // After the kick the keeper walks back onto its line.
+    m.placeTaker(ball.x - 40, ball.y - 30);
+    expect(m.humanFlick(k, 0, 600)).toBe(true);
+    expect(m.placing).toBeNull();
+    settle(m);
+    frames(m, 1);
+    expect(k.y).toBe(KEEPER_LINE);
+  });
+
+  it("doesn't offer the move to the computer's keeper", () => {
+    const { m } = harness({ mode: "cpu" });
+    m.doRestart(1, CX, 75, "gk");
+    expect(m.keeperBall).toBe(1);
+    expect(m.placing).toBeNull();
+    expect(m.canPlace()).toBe(false);
   });
 
   it("won't let a keeper be flicked in open play", () => {

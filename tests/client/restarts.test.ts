@@ -3,8 +3,7 @@ import {
   CX,
   GW,
   H,
-  KEEPER_LINE,
-  KR,
+  GOAL_AREA_D,
   RB,
   W,
 } from "../../src/client/src/engine/constants";
@@ -34,7 +33,7 @@ describe("goals and restarts (home attacks the top goal in the first half)", () 
     expect(m.turn).toBe(1);
     expect(m.keeperBall).toBe(1);
     expect(m.world.ball.x).toBe(CX);
-    expect(m.world.ball.y).toBe(KEEPER_LINE + KR + RB + 2);
+    expect(m.world.ball.y).toBe(GOAL_AREA_D - RB - 2);
   });
 
   it("counts a goal struck inside the shooting area", () => {

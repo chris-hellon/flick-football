@@ -47,6 +47,9 @@ export const GOAL_AREA_D = 55;
 /** A keeper's kick: ball speed per unit of slingshot speed (a kick from the hands, not a full hit). */
 export const KEEPER_KICK = 0.8;
 
+/** Power rises along this curve, so short and medium pulls are softer; a full pull is unchanged. */
+export const POWER_CURVE = 1.5;
+
 /** Launch speed for a pull of distance d (before the direction is applied). */
 export const launchSpeed = (d: number): number =>
-  MINV + (Math.min(d, MAXDRAG) / MAXDRAG) * (MAXV - MINV);
+  MINV + (Math.min(d, MAXDRAG) / MAXDRAG) ** POWER_CURVE * (MAXV - MINV);

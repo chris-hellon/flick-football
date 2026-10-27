@@ -32,9 +32,15 @@ disagree, the prototype wins; fix this file.
   restitution `E = 0.8`. A collision with relative normal speed over 60 plays a "tock".
 - Players are clamped to 34 units beyond the touchlines and bounce off that limit at 0.4.
 - A flick ends when every mover is below speed 3, or after 9 seconds.
-- **Flick input:** press on your player, drag back, release. Pull distance is capped at
-  `MAXDRAG = 150`; power `pw = min(d,150)/150`; launch speed `v = 90 + pw · (1500 - 90)`,
-  direction opposite to the drag. `MAXV = 1500`. Drags under 12 units cancel.
+- **Flick input:** press on your player, drag back, release. The pull is measured from where the
+  press started (the prototype measured from the player's centre, so pressing near a player's edge
+  added up to 36 units of pull and a tiny drag gave a hard flick, worst at kick-off where the ball
+  is touching the taker). Pull distance is capped at
+  `MAXDRAG = 150`; power `pw = min(d,150)/150`; launch speed `v = 90 + pw^1.5 · (1500 - 90)`
+  (`POWER_CURVE`; the prototype was linear, which made light touches too strong: a 30-unit pull
+  went from 372 to 216, half a pull from 795 to 588, a full pull is still 1500), direction
+  opposite to the drag. `MAXV = 1500`. Drags under 12 units cancel. The computer chooses speeds
+  directly, so the curve doesn't change its play.
 
 ## Turn and possession rules
 
@@ -61,9 +67,12 @@ disagree, the prototype wins; fix this file.
 - **Out over the goal line, outside the goal mouth:** corner to the attackers if the defending side
   touched it last, otherwise goal kick. Corner ball 11 units in from both lines at the nearest corner (`RB + 3`).
 - **Goal kicks are the keeper's kick** (changed after playtesting; the prototype put the ball at
-  (CX, 75) for an outfield player). The keeper is centred and the ball placed at its feet, on the
-  pitch side (`KR + RB + 2` from it). Only that keeper can be flicked: drag back from the keeper
-  and let go. Keepers stay on their rods, so the kick launches the ball directly at
+  (CX, 75) for an outfield player). The keeper is centred on its line and the ball placed on the
+  front edge of the goal area (`GOAL_AREA_D - RB - 2` from the end line). A human side may first
+  move its keeper like a restart taker (press inside the dashed ring, not on a figure, and drag):
+  within `PLACE_R` of the ball, on the pitch, and never upfield of the ball. It stays where it was
+  put until the kick, then walks back onto its line at 160 units a second. Only that keeper can
+  be flicked: drag back from the keeper and let go. The kick launches the ball directly at
   `KEEPER_KICK` (0.8) × the slingshot speed. It counts as a touch, so the kicking side keeps the
   ball. Outside the keeper's kick, keepers can't be flicked. The computer kicks to the most
   advanced, least-marked team-mate it can reach (`planKeeperKick`, `ballSpeedFor`).
