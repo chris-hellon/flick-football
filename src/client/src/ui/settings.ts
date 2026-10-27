@@ -19,6 +19,7 @@ const KEYS = [
   "cup",
   "results",
   "tab",
+  "consent",
 ] as const;
 type Key = (typeof KEYS)[number];
 

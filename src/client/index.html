@@ -9,6 +9,10 @@
       name="description"
       content="Flick Football: a table-football flicking game. Build your club, flick your players, win the Cup."
     />
+    <link rel="apple-touch-icon" href="/icons/apple-touch-icon.png" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <meta name="apple-mobile-web-app-title" content="Flick Football" />
     <title>Flick Football</title>
   </head>
   <body>
@@ -87,6 +91,9 @@
               <span class="line" id="ftScore"></span>
               <table class="stats" id="ftStats"></table>
               <div class="row"><button class="btn amber" id="ftNext">Play again</button></div>
+              <a class="tip" id="ftTip" target="_blank" rel="noopener" hidden
+                >Enjoying it? Buy me a coffee</a
+              >
             </div>
           </div>
           <div class="overlay" id="cupOver" hidden>
@@ -335,8 +342,36 @@
               </ol>
             </section>
           </div>
+          <footer class="sidefoot">
+            <div class="getapp" id="getApp" hidden>
+              <button type="button" class="btn ghost" id="installBtn" hidden>
+                Install the app
+              </button>
+              <p class="hint" id="iosTip" hidden>
+                To install: tap <b>Share</b>, then <b>Add to Home Screen</b>. It then opens like an
+                app and plays the computer with no signal.
+              </p>
+            </div>
+            <div class="footlinks">
+              <a class="tip" id="tipLink" target="_blank" rel="noopener" hidden>Buy me a coffee</a>
+              <button type="button" class="linkbtn" id="cookieBtn">Cookie settings</button>
+            </div>
+          </footer>
         </aside>
       </main>
+    </div>
+    <div class="consent" id="consent" role="region" aria-label="Cookies" hidden>
+      <p>
+        Can we use Google Analytics cookies to see how the game gets played? Nothing else, and no
+        ads.
+      </p>
+      <div class="row">
+        <button type="button" class="btn ghost" id="consentNo">Reject</button>
+        <button type="button" class="btn ghost" id="consentYes">Accept</button>
+      </div>
+    </div>
+    <div class="turn" aria-hidden="true">
+      <p>Turn your phone upright to play.</p>
     </div>
     <script type="module" src="/src/main.ts"></script>
   </body>

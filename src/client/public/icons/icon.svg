@@ -1,0 +1,43 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+  <defs>
+    <radialGradient id="flood" cx="50%" cy="38%" r="70%">
+      <stop offset="0" stop-color="#2f7a3f"/>
+      <stop offset="0.65" stop-color="#1d5a2c"/>
+      <stop offset="1" stop-color="#0f3a1c"/>
+    </radialGradient>
+    <radialGradient id="dome" cx="42%" cy="36%" r="65%">
+      <stop offset="0" stop-color="#ffd47a"/>
+      <stop offset="0.55" stop-color="#f5b53d"/>
+      <stop offset="1" stop-color="#b07a1e"/>
+    </radialGradient>
+    <radialGradient id="ball" cx="40%" cy="35%" r="65%">
+      <stop offset="0" stop-color="#ffffff"/>
+      <stop offset="1" stop-color="#d9d4c2"/>
+    </radialGradient>
+  </defs>
+  <!-- Full-bleed baize so the maskable crop never shows an edge. -->
+  <rect width="512" height="512" fill="url(#flood)"/>
+  <g fill="#ffffff" opacity="0.05">
+    <rect x="0" y="0" width="512" height="64"/>
+    <rect x="0" y="128" width="512" height="64"/>
+    <rect x="0" y="256" width="512" height="64"/>
+    <rect x="0" y="384" width="512" height="64"/>
+  </g>
+  <!-- Halfway line and centre circle, within the maskable safe zone. -->
+  <g fill="none" stroke="#f2efe4" stroke-opacity="0.55" stroke-width="7">
+    <line x1="0" y1="300" x2="512" y2="300"/>
+    <circle cx="256" cy="300" r="118"/>
+  </g>
+  <!-- The flick: a figure on its domed base, and the ball flying off. -->
+  <ellipse cx="226" cy="330" rx="86" ry="22" fill="#000" opacity="0.28"/>
+  <circle cx="220" cy="300" r="78" fill="#0a1310"/>
+  <circle cx="220" cy="296" r="72" fill="url(#dome)"/>
+  <circle cx="220" cy="292" r="36" fill="#0a1310"/>
+  <circle cx="220" cy="292" r="28" fill="#f2efe4"/>
+  <circle cx="220" cy="292" r="12" fill="#0a1310"/>
+  <g stroke="#f2efe4" stroke-linecap="round" stroke-width="8" opacity="0.7">
+    <line x1="292" y1="236" x2="318" y2="210"/>
+    <line x1="306" y1="258" x2="340" y2="240"/>
+  </g>
+  <circle cx="352" cy="188" r="30" fill="url(#ball)" stroke="#0a1310" stroke-width="5"/>
+</svg>

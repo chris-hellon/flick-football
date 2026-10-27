@@ -16,7 +16,9 @@ droplet at no extra cost.
 - **Phase 3 done:** live at https://flickfootball.com. `deploy/` holds the systemd service and the
   scripts that set up and deploy the app to the droplet; the website itself is made in Orbit (see
   Deploy below). To redeploy, double-click `Deploy.command` in Finder. GitHub Actions builds and tests every push.
-- Next: an installable web app (Phase 4). `docs/BUILD_PLAN.md` has the plan.
+- **Phase 4 done:** an installable web app ("Install the app" in the side panel, or Share → Add
+  to Home Screen on iPhone) that plays the computer, the Cup and same-device matches with no signal.
+- Next: a store app is optional and costs money (Phase 5). `docs/BUILD_PLAN.md` has the plan.
 - `prototype/flick-football.html` is the original single-file version, kept as the reference for
   behaviour and feel. (Its online mode depends on claude.ai and is being replaced.)
 

@@ -287,6 +287,16 @@ corners, fouls.
   pitch, stadium scoreboard (amber digits). Display font Big Shoulders Display for headings, tabs,
   buttons and toggles (uppercase); body font Archivo for text and inputs. Overlays dim with a soft
   vignette, not a box. A deliberate single dark look.
+- Under the menu, quietly: "Install the app" (only when the browser offers it; on iPhone and iPad a
+  Share → Add to Home Screen tip instead; hidden once installed), "Buy me a coffee"
+  (revolut.me/c_hellon, also a small link on the full-time card) and "Cookie settings".
+- Cookies: Google Analytics loads only after the player taps Accept on a slim bar along the bottom
+  (Reject and Accept look the same). The choice is kept on the device; "Cookie settings" asks again,
+  and a change of mind to Reject stops measuring and deletes the `_ga` cookies. Development builds
+  have no analytics and show no bar.
+- Installed (or offline), everything but online matches works with no signal: the service worker
+  precaches the whole game. Online play offline says "Couldn't reach the server". A phone turned
+  sideways shows "Turn your phone upright to play" (the pitch is portrait).
 
 ## Local storage keys
 
@@ -294,4 +304,5 @@ The prototype used `ff2_mode, ff2_diff, ff2_away, ff2_fmt, ff2_blockOn, ff2_soun
 ff2_form1, ff2_club, ff2_oppClub, ff2_cup`. The port uses the same names with an `ff_` prefix
 (`src/client/src/ui/settings.ts`). On first load it copies any `ff2_` value that has no `ff_`
 counterpart, so testers keep their club and settings. Stored values are validated on load.
-`ff_results` (new in the port) holds the Results list.
+`ff_results` (new in the port) holds the Results list, `ff_tab` the last menu tab, and
+`ff_consent` the cookie choice (`granted` or `denied`).

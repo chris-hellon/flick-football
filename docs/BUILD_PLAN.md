@@ -119,6 +119,14 @@ other sites on the droplet unaffected; `systemctl status` shows memory well unde
 
 **Check:** installable (Lighthouse); airplane mode still allows a friendly vs the computer.
 
+**Built:** `vite-plugin-pwa` 2.0.0 (manifest, icons drawn in `public/icons/icon.svg` and rendered
+to 192, 512, maskable 512 and the 180 Apple touch icon; Workbox precaches the game, about 660 KB,
+with `/hubs` and `/healthz` left to the network). Install button, iPhone tip, safe-area padding for
+the notch and home bar, and the turn-upright hint. Checked in Chromium: no installability errors,
+offline reload and kick off against the computer, online join offline fails politely. Also added:
+the cookie banner (analytics only after Accept) and the "Buy me a coffee" link. Remaining: install
+it on a real phone.
+
 ## Phase 5 (optional, has costs): Store app
 
 Only when Chris decides; store accounts cost money (Apple $99 a year, Google $25 once).
