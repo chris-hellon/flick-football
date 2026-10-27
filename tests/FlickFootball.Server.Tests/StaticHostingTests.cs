@@ -39,6 +39,34 @@ public sealed class StaticHostingTests : IClassFixture<StaticHostingTests.Factor
         Assert.Equal("text/javascript", response.Content.Headers.ContentType?.MediaType);
     }
 
+    [Theory]
+    [InlineData("/")]
+    [InlineData("/index.html")]
+    [InlineData("/m/ABCDE")]
+    public async Task The_page_is_revalidated_on_every_visit(string path)
+    {
+        var response = await _client.GetAsync(path);
+
+        Assert.Equal(CacheHeaders.Revalidate, response.Headers.CacheControl?.ToString());
+    }
+
+    [Fact]
+    public async Task Hashed_assets_are_cached_for_good()
+    {
+        var response = await _client.GetAsync("/assets/app.js");
+
+        Assert.Equal(CacheHeaders.Forever, response.Headers.CacheControl?.ToString());
+    }
+
+    [Fact]
+    public async Task Health_check_answers_ok()
+    {
+        var response = await _client.GetAsync("/healthz");
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        Assert.Equal("ok", await response.Content.ReadAsStringAsync());
+    }
+
     public sealed class Factory : WebApplicationFactory<Program>
     {
         public const string Marker = "flick-football-test-shell";

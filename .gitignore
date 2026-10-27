@@ -28,3 +28,6 @@ src/FlickFootball.Server/wwwroot/
 .env
 .env.*
 appsettings.*.local.json
+
+# Deploy build output
+deploy/out/

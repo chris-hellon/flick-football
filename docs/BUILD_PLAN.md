@@ -60,6 +60,16 @@ their seat back; a third window watches.
 
 ## Phase 3: Deploy to the existing droplet
 
+**Built:** the website (Nginx reverse proxy, HTTPS, DNS) is made in Chris's Orbit app, whose
+proxy template already passes WebSocket upgrades, so this repo has no Nginx file.
+`deploy/flick-football.service`, `deploy/setup-droplet.sh` (one-time: user, folder, service, a sudo
+rule for restarting it; never touches Nginx) and `deploy/deploy.sh` (build, test, publish, rsync,
+restart, health check). `/healthz`, immutable caching for hashed assets and `no-cache` for the page
+are in the app. `.github/workflows/ci.yml` builds and tests on push. Rehearsed end to end against an
+Ubuntu 24.04 container with systemd, another site, and Orbit's exact proxy template. Live at
+https://flickfootball.com since 2026-10-27 (droplet 157.230.35.0, port 5002, self-contained because
+the droplet has .NET 9). Remaining: the phone-on-mobile-data check.
+
 Add this site without touching anything else on the droplet.
 
 - `dotnet publish -c Release -r linux-x64 --self-contained false` into `/var/www/flick-football`

@@ -35,7 +35,7 @@ flick-football/
   tests/
     client/                    Vitest: engine and rules.
     FlickFootball.Server.Tests xUnit: room registry, hub validation.
-  deploy/                      Nginx site config, systemd unit, deploy script.
+  deploy/                      systemd unit, droplet setup and deploy scripts (the Nginx site is made in Orbit).
   prototype/flick-football.html
   docs/
 ```
@@ -46,7 +46,7 @@ Hosting:
   serves the static client and the SignalR hub on the same origin, behind Nginx with a Let's Encrypt
   certificate. No database, no extra services, nothing paid.
 - **Domain:** a subdomain of a domain Chris already owns to start (free), e.g. `flick.<his-domain>`.
-  Keep the domain out of code: it lives in configuration and the Nginx file only, so moving to a
+  Keep the domain out of code: it lives only in the Orbit-made Nginx site, so moving to a
   dedicated domain later is a DNS change plus a new certificate.
 - Keep memory small (the droplet is shared): in-memory rooms, server GC off
   (`<ServerGarbageCollector>false</ServerGarbageCollector>`), and a cap on rooms and connections.
@@ -83,7 +83,9 @@ Other decisions:
 - Keep terminal sessions you start (dev servers, watchers) running and say they're still active,
   rather than telling him to close them.
 - British English in UI copy ("colour", "Randomise", "kick off", "full time").
-- Never touch his other sites on the droplet: only add this site's own Nginx file and service.
+- Never touch his other sites on the droplet. Chris makes websites (Nginx, HTTPS, DNS) with his own
+  Orbit app (`~/Work/NET Core 10/Orbit`); this repo only adds the app's own service, user, folder
+  and sudo rule.
 
 ## Commands
 

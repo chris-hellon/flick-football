@@ -1,4 +1,5 @@
 using System.Threading.RateLimiting;
+using FlickFootball.Server;
 using FlickFootball.Server.Online;
 using Microsoft.AspNetCore.HttpOverrides;
 using Microsoft.Extensions.Options;
@@ -41,11 +42,15 @@ app.UseForwardedHeaders();
 app.UseRateLimiter();
 
 // The Vite build lands in wwwroot; any unknown path (e.g. /m/ABCDE) gets the app shell.
+// Vite names its assets by content hash, so they can be cached for good; the page itself must be
+// checked every time so a new deploy shows up at once.
+var staticFiles = new StaticFileOptions { OnPrepareResponse = ctx => CacheHeaders.Apply(ctx.Context) };
 app.UseDefaultFiles();
-app.UseStaticFiles();
+app.UseStaticFiles(staticFiles);
 
+app.MapGet("/healthz", () => Results.Text("ok")).ShortCircuit();
 app.MapHub<MatchHub>("/hubs/match");
-app.MapFallbackToFile("index.html");
+app.MapFallbackToFile("index.html", staticFiles);
 
 app.Run();
 

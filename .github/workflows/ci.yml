@@ -1,0 +1,45 @@
+# Builds and tests on every push and pull request. Deploying stays a manual step (deploy/deploy.sh).
+name: CI
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: src/client/package-lock.json
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          global-json-file: global.json
+
+      - name: Client
+        working-directory: src/client
+        run: |
+          npm ci
+          npm run lint
+          npm run format:check
+          npm run test
+          npm run build
+
+      - name: Server
+        run: dotnet test --nologo
+
+      - name: Publish (linux-x64)
+        run: dotnet publish src/FlickFootball.Server -c Release -r linux-x64 --self-contained false -o out --nologo
