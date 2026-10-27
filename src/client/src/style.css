@@ -1,0 +1,59 @@
+:root {
+  --wood: #26170e;
+  --wood-hi: #3a2415;
+  --chalk: #f3efe2;
+  --amber: #f3b13a;
+  --f-display: "Arial Narrow", Impact, sans-serif;
+  --f-body: system-ui, -apple-system, "Segoe UI", sans-serif;
+  color-scheme: dark;
+}
+
+html,
+body {
+  height: 100%;
+  margin: 0;
+}
+
+body {
+  background: radial-gradient(ellipse at 50% 40%, var(--wood-hi), var(--wood) 70%);
+  background-color: var(--wood);
+  color: var(--chalk);
+  font-family: var(--f-body);
+  padding-left: max(16px, env(safe-area-inset-left, 0px));
+  padding-right: max(16px, env(safe-area-inset-right, 0px));
+}
+
+.app {
+  height: 100%;
+  max-width: 1160px;
+  margin: 0 auto;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  padding-block: 12px;
+  box-sizing: border-box;
+}
+
+.title {
+  margin: 0;
+  font-family: var(--f-display);
+  font-weight: 800;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--amber);
+}
+
+.pitch-wrap {
+  flex: 1;
+  min-height: 0;
+  width: 100%;
+  display: flex;
+  justify-content: center;
+}
+
+canvas {
+  display: block;
+  border-radius: 6px;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5);
+}

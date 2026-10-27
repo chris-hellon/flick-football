@@ -1,0 +1,8 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/FlickFootball.Server/FlickFootball.Server.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/FlickFootball.Server.Tests/FlickFootball.Server.Tests.csproj" />
+  </Folder>
+</Solution>

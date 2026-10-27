@@ -1,0 +1,30 @@
+# OS / editors
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/*
+!.vscode/extensions.json
+*.swp
+*.user
+*.suo
+
+# Node
+node_modules/
+npm-debug.log*
+*.tsbuildinfo
+dist/
+coverage/
+
+# .NET
+bin/
+obj/
+TestResults/
+*.binlog
+
+# Client build output (produced by `npm run build`)
+src/FlickFootball.Server/wwwroot/
+
+# Local config
+.env
+.env.*
+appsettings.*.local.json
