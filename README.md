@@ -15,8 +15,7 @@ droplet at no extra cost.
   dropped connection takes the same seat back.
 - **Phase 3 done:** live at https://flickfootball.com. `deploy/` holds the systemd service and the
   scripts that set up and deploy the app to the droplet; the website itself is made in Orbit (see
-  Deploy below). To redeploy:
-  `FLICK_SSH=root@157.230.35.0 FLICK_PORT=5002 FLICK_HOST=flickfootball.com SELF_CONTAINED=1 deploy/deploy.sh` GitHub Actions builds and tests every push.
+  Deploy below). To redeploy, double-click `Deploy.command` in Finder. GitHub Actions builds and tests every push.
 - Next: an installable web app (Phase 4). `docs/BUILD_PLAN.md` has the plan.
 - `prototype/flick-football.html` is the original single-file version, kept as the reference for
   behaviour and feel. (Its online mode depends on claude.ai and is being replaced.)
@@ -71,17 +70,20 @@ Locally: Node 22+, the .NET 10 SDK and SSH access as a user with sudo.
    rule that lets you restart just that service, then deploys:
 
    ```bash
-   FLICK_SSH=chris@<droplet> deploy/deploy.sh --setup
+   deploy/deploy.sh --setup
    ```
+
+   (with `FLICK_SSH` and the rest set in `deploy/deploy.env` first)
 
 2. In Orbit, on the droplet's Websites tab: add the site (e.g. `flick.<your domain>`) as a
    **reverse proxy** to port **5080**, point the domain at the droplet, then enable HTTPS.
    Orbit's proxy passes the WebSocket upgrade through, which online play uses.
-3. Every deploy after that (builds, tests, uploads, restarts, health-checks):
+3. Every deploy after that: double-click **`Deploy.command`** in the repo root (Finder). It opens
+   Terminal, runs the tests, builds, uploads, restarts, checks the live site and shows a
+   notification. From a terminal, `deploy/deploy.sh` does the same.
 
-   ```bash
-   FLICK_SSH=chris@<droplet> FLICK_HOST=flick.<your domain> deploy/deploy.sh
-   ```
+The settings live in `deploy/deploy.env` (the live site's are there now); a variable set in the
+environment wins over the file.
 
 | Setting | Default | Meaning |
 | --- | --- | --- |

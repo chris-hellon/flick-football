@@ -1,12 +1,14 @@
 #!/usr/bin/env bash
 # Builds, tests and deploys Flick Football to the droplet. Run from anywhere in the repo.
 #
-#   FLICK_SSH=chris@droplet deploy/deploy.sh           # deploy
-#   FLICK_SSH=chris@droplet deploy/deploy.sh --setup   # first time: set up the service, then deploy
+#   deploy/deploy.sh           # deploy, with the settings in deploy/deploy.env
+#   deploy/deploy.sh --setup   # first time: set up the service, then deploy
+#
+# Or double-click Deploy.command in the repo root.
 #
 # The website (Nginx reverse proxy to FLICK_PORT, HTTPS, DNS) is made in Orbit, not here.
 #
-# Settings (environment):
+# Settings (deploy/deploy.env, or the environment, which wins):
 #   FLICK_SSH        required: SSH destination, user@host (the user that owns the app folder)
 #   FLICK_PORT       port on the droplet's loopback (default 5080); must match the setup
 #   FLICK_HOST       public host name; when set, the HTTPS health check runs at the end
@@ -16,9 +18,16 @@
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+# Settings from deploy/deploy.env, unless already set in the environment.
+if [[ -f "$ROOT/deploy/deploy.env" ]]; then
+  while IFS='=' read -r key value; do
+    [[ "$key" =~ ^[A-Z_][A-Z0-9_]*$ ]] || continue
+    [[ -n "${!key:-}" ]] || export "$key=$value"
+  done < "$ROOT/deploy/deploy.env"
+fi
 OUT="$ROOT/deploy/out"
 APP_DIR=/var/www/flick-football
-SSH_TO="${FLICK_SSH:?set FLICK_SSH=user@droplet}"
+SSH_TO="${FLICK_SSH:?set FLICK_SSH=user@droplet in deploy/deploy.env}"
 PORT="${FLICK_PORT:-5080}"
 RID="${FLICK_RID:-linux-x64}"
 SC="$([[ "${SELF_CONTAINED:-0}" == 1 ]] && echo true || echo false)"
