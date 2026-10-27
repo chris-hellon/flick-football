@@ -1,9 +1,7 @@
 import "./style.css";
-import { drawPitch } from "./render/pitch";
+import { App } from "./ui/app";
 
-const cv = document.querySelector<HTMLCanvasElement>("#cv");
-if (!cv) throw new Error("Pitch canvas missing");
+const app = new App();
 
-const redraw = (): void => drawPitch(cv);
-redraw();
-window.addEventListener("resize", redraw);
+// Development builds expose the app for debugging in the console (window.flick.match etc.).
+if (import.meta.env.DEV) Object.assign(window, { flick: app });

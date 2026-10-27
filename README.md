@@ -7,11 +7,13 @@ droplet at no extra cost.
 
 ## Status
 
-- `prototype/flick-football.html` is a complete, playable single-file version. Open it in a
-  browser to play friendlies and the Cup against the computer, or two players on one device.
-  (Its online mode depends on claude.ai and is being replaced.)
-- The production build (TypeScript client, ASP.NET Core + SignalR server on DigitalOcean behind
-  Nginx, then an installable web app) follows `docs/BUILD_PLAN.md`.
+- **Phase 1 done:** the game is ported to TypeScript in `src/client` (engine, rules, computer
+  opponent, renderer, sound, club builder, Cup) and plays the same as the prototype offline:
+  friendlies against the computer or a friend on one device, and the Cup.
+- Next: online matches over SignalR (Phase 2), then deploying to the droplet (Phase 3).
+  `docs/BUILD_PLAN.md` has the plan.
+- `prototype/flick-football.html` is the original single-file version, kept as the reference for
+  behaviour and feel. (Its online mode depends on claude.ai and is being replaced.)
 
 ## Run it
 
@@ -39,6 +41,9 @@ Other commands, from `src/client`:
 | `npm run format` | Prettier |
 
 From the repo root, `dotnet test` runs the server tests (xUnit).
+
+In development builds the app is on `window.flick` for poking at from the browser console
+(`flick.match.phase`, `flick.match.world.ball`, and so on).
 
 To see the production setup locally, run `npm run build` and then `dotnet run`: the server serves
 the built page at http://localhost:5080.

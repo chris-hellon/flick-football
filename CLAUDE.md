@@ -27,6 +27,8 @@ flick-football/
       src/ai/                  Computer opponent (attack flick, block flick).
       src/render/              Canvas renderer (pitch cache, figures, aim, banners, replay).
       src/ui/                  Side panel, club builder, pre-match card, cup, full time.
+      src/audio/               Web Audio effects (tock, whistle, cheer, ooh, crowd).
+      src/util/                Maths, seeded random source, colour helpers.
       src/net/                 SignalR client wrapper (Phase 2+).
     FlickFootball.Server/      ASP.NET Core (.NET 10). SignalR hub, room registry, serves the client build.
     FlickFootball.App/         Optional, later: .NET MAUI Blazor Hybrid shell around the client build.

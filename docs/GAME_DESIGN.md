@@ -96,6 +96,9 @@ towards the ball's x. They move at up to `speed`, clamped to the goal mouth less
 History: the first version read shots perfectly and was unbeatable ("impossible to score").
 Measured after the fix: corner shots from about 300 units out score around 80% against the Easy
 keeper and 63% against Medium; shots at the keeper are saved. Keep it beatable.
+`tests/client/keeper.test.ts` guards this with a seeded run of 200 such shots (player flicked at
+520 units/s, which reproduces those figures in the port: 80% Easy, 61% Medium) and requires Medium
+to stay within 50–75%.
 
 ## Computer opponent
 
@@ -228,8 +231,9 @@ corners, fouls.
 - Look: walnut table background, baize pitch, stadium scoreboard (amber digits), display font Big
   Shoulders Display, body font Archivo. A deliberate single dark look.
 
-## Local storage keys (prototype)
+## Local storage keys
 
-`ff2_mode, ff2_diff, ff2_away, ff2_fmt, ff2_blockOn, ff2_sound, ff2_form0, ff2_form1, ff2_club,
-ff2_oppClub, ff2_cup`. The port can rename them (e.g. `ff_` + version) but should migrate `club`
-so testers keep their club.
+The prototype used `ff2_mode, ff2_diff, ff2_away, ff2_fmt, ff2_blockOn, ff2_sound, ff2_form0,
+ff2_form1, ff2_club, ff2_oppClub, ff2_cup`. The port uses the same names with an `ff_` prefix
+(`src/client/src/ui/settings.ts`). On first load it copies any `ff2_` value that has no `ff_`
+counterpart, so testers keep their club and settings. Stored values are validated on load.

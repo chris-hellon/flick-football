@@ -5,15 +5,190 @@
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
     <meta name="theme-color" content="#26170e" />
+    <meta
+      name="description"
+      content="Flick Football: a table-football flicking game. Build your club, flick your players, win the Cup."
+    />
     <title>Flick Football</title>
   </head>
   <body>
-    <main class="app">
-      <h1 class="title">Flick Football</h1>
-      <div class="pitch-wrap">
-        <canvas id="cv" aria-label="Table football pitch"></canvas>
+    <div class="app">
+      <header class="board">
+        <div class="team home" id="t0">
+          <span class="kit" id="kit0"></span
+          ><span class="name"
+            ><span class="long" id="n0">Home</span><span class="short" id="c0">HOM</span></span
+          >
+        </div>
+        <div class="mid">
+          <div class="score" aria-label="Score">
+            <span id="s0">0</span><span class="dash">–</span><span id="s1">0</span>
+          </div>
+          <div class="clock" id="clock">First to 3</div>
+        </div>
+        <div class="team away" id="t1">
+          <span class="name"
+            ><span class="long" id="n1">Away</span><span class="short" id="c1">AWY</span></span
+          ><span class="kit" id="kit1"></span>
+        </div>
+      </header>
+      <div class="status" aria-live="polite">
+        <span class="chip" id="chip"></span><span id="status">Kick off.</span>
       </div>
-    </main>
+      <main class="layout">
+        <div class="stage" id="stage">
+          <canvas id="cv" aria-label="Table football pitch"></canvas>
+          <button class="btn amber skip" id="skip" hidden>Skip</button>
+          <div class="overlay pre" id="preOver" hidden>
+            <div class="sheet">
+              <span class="tag">Friendly</span>
+              <div class="vs">
+                <div class="tm">
+                  <span class="kit" id="preKit0"></span><span id="preName0"></span>
+                </div>
+                <span class="v">v</span>
+                <div class="tm">
+                  <span class="kit" id="preKit1"></span><span id="preName1"></span>
+                </div>
+              </div>
+              <span class="line" id="preInfo"></span>
+              <button class="btn amber kick" id="preKick">Kick off</button>
+            </div>
+          </div>
+          <div class="overlay" id="ftOver" hidden>
+            <div class="sheet">
+              <span class="tag" id="ftTag">Full time</span>
+              <span class="res" id="ftRes">Home win</span>
+              <span class="line" id="ftScore"></span>
+              <table class="stats" id="ftStats"></table>
+              <div class="row"><button class="btn amber" id="ftNext">Play again</button></div>
+            </div>
+          </div>
+          <div class="overlay" id="cupOver" hidden>
+            <div class="sheet" id="cupSheet"></div>
+          </div>
+        </div>
+        <aside class="side">
+          <div class="kickbox">
+            <button class="btn amber kick" id="startBtn">Kick off new match</button>
+            <span class="hint" id="kickHint">Restarts the friendly with the settings below.</span>
+          </div>
+          <section class="card">
+            <div class="cardhead">
+              <h2>Your club</h2>
+              <button type="button" class="btn ghost dice" id="cRand">Randomise</button>
+            </div>
+            <p class="hint">You play as this club in every match. Edit it any time.</p>
+            <div class="builder" id="cBuild"></div>
+          </section>
+          <section class="card">
+            <h2>Friendly setup</h2>
+            <div class="group">
+              <div class="cardhead">
+                <label class="label" for="awaySel">Opponents</label
+                ><button type="button" class="btn ghost dice" id="oRand">Randomise</button>
+              </div>
+              <select id="awaySel"></select>
+            </div>
+            <div class="oppbox" id="oBox" hidden>
+              <span class="label">Build the opposition</span>
+              <div class="builder" id="oBuild"></div>
+            </div>
+            <div class="group">
+              <span class="label">Controlled by</span>
+              <div class="seg" id="modeSeg">
+                <button data-v="cpu">Computer</button>
+                <button data-v="pvp">A friend</button>
+              </div>
+            </div>
+            <div class="group">
+              <span class="label">Difficulty</span>
+              <div class="seg" id="diffSeg">
+                <button data-v="0">Easy</button>
+                <button data-v="1">Medium</button>
+                <button data-v="2">Hard</button>
+              </div>
+            </div>
+            <div class="duo">
+              <div class="group">
+                <label class="label" for="form0Sel">Your shape</label
+                ><select id="form0Sel"></select>
+              </div>
+              <div class="group">
+                <label class="label" for="form1Sel">Their shape</label
+                ><select id="form1Sel"></select>
+              </div>
+            </div>
+            <div class="group">
+              <label class="label" for="fmtSel">Match length</label>
+              <select id="fmtSel">
+                <option value="t3">Two halves of 3 minutes</option>
+                <option value="t5">Two halves of 5 minutes</option>
+                <option value="g3">First to 3 goals</option>
+                <option value="g5">First to 5 goals</option>
+              </select>
+            </div>
+            <div class="group">
+              <span class="label">Block flicks</span>
+              <div class="seg" id="blockSeg">
+                <button data-v="1">On</button>
+                <button data-v="0">Off</button>
+              </div>
+            </div>
+            <div class="row">
+              <button class="btn ghost" id="snd">Sound on</button>
+            </div>
+          </section>
+          <section class="card">
+            <h2>The Cup</h2>
+            <p class="hint" id="cupHint">
+              Your club plus seven others, straight knockout. Draws after full time go to golden
+              goal.
+            </p>
+            <div class="row"><button class="btn" id="cupBtn">Enter the Cup</button></div>
+          </section>
+          <details class="rules" open>
+            <summary>How to play</summary>
+            <ol>
+              <li>
+                <b>Flick:</b> press on one of your players, drag back like a catapult and let go.
+                Longer pull, harder flick.
+              </li>
+              <li>
+                <b>Keep the ball</b> by touching it with the player you flick. Miss it and the other
+                side gets the next flick.
+              </li>
+              <li>
+                <b>Three in a row</b> is the limit for any one player. After that, flick a
+                team-mate.
+              </li>
+              <li><b>Foul:</b> hit an opponent before the ball and you lose possession.</li>
+              <li>
+                <b>Block flicks</b> (optional, off by default): after each attacking flick that
+                keeps the ball, the defending side moves one player into the way before the
+                attackers go again. During a block flick only the defenders can be flicked, and
+                touching the ball puts it back.
+              </li>
+              <li>
+                <b>Shooting area:</b> goals only count if the shot is struck past the dashed line.
+                Own goals always count.
+              </li>
+              <li>
+                <b>Keepers</b> are on rods and react to shots by themselves. Aim for the corners.
+              </li>
+              <li>
+                The teams <b>change ends at half time</b>, so in the second half you attack the
+                other goal.
+              </li>
+              <li>
+                The clock runs while play is live. Throw-ins, corners and goal kicks are taken by
+                the nearest player.
+              </li>
+            </ol>
+          </details>
+        </aside>
+      </main>
+    </div>
     <script type="module" src="/src/main.ts"></script>
   </body>
 </html>
